@@ -1,86 +1,78 @@
-# 🧩 Implementación: <CONTROLADOR>
+# <Implementación>
 
-> **Equipo:** _Nombre 1 · Nombre 2_  |  **Rama:** `equipo/<controlador>`  |  **Fecha:** _dd/mm/aaaa_
+| Campo | Valor |
+|---|---|
+| Integrantes | |
+| Rama | `equipo/<implementacion>` |
+| Versión del controlador | |
+| Versión de Gateway API | |
+| Clúster y versión de Kubernetes | |
 
 <!--
-INSTRUCCIONES:
-- Copia esta plantilla como el README.md de tu carpeta y rellena cada sección.
-- El texto en cursiva es guía: bórralo al completar.
-- Si una sección no aplica, justifícalo brevemente (no la elimines).
+Reemplazar el README.md de la carpeta con esta estructura.
+Conservar todas las secciones; si una no aplica, indicar el motivo.
 -->
 
-## 1. Introducción
+## 1. Descripción
 
-_¿Qué es <CONTROLADOR>? ¿Quién lo mantiene? ¿De dónde viene (ingress
-controller, service mesh, CNI…)? 5–10 líneas._
+Origen, mantenedor y tipo de componente (service mesh, CNI, API gateway,
+reverse proxy).
 
 ## 2. Arquitectura
 
-_Componentes que participan (control plane, data plane, proxies…). Incluye un
-diagrama propio (imagen en `evidencias/` o Mermaid)._
+Componentes de control plane y data plane, y flujo de una petición. Incluir
+diagrama (Mermaid o imagen en `evidencias/`).
 
-## 3. Requisitos previos
+## 3. Requisitos
 
-- _Clúster usado (herramienta y versión de Kubernetes)._
-- _Versiones: kubectl, helm, <controlador>._
-- _Recursos mínimos (CPU / RAM)._
-- _¿Requiere los CRDs de Gateway API preinstalados o los trae?_
+Versiones, recursos mínimos y dependencias, incluidos los CRDs de Gateway API
+requeridos.
 
 ## 4. Instalación
 
-_Paso a paso con comandos exactos y verificación después de cada paso
-relevante._
+Comandos en orden de ejecución, con verificación después de cada paso.
 
-```bash
-# ejemplo de formato
-helm install ...
-kubectl -n <namespace> get pods
-```
+## 5. GatewayClass y Gateway
 
-## 5. Configuración de Gateway API
+GatewayClass registrada por el controlador, Gateway desplegado, listeners y
+recursos que aprovisiona el controlador (Deployment, Service).
 
-_GatewayClass que registra el controlador, Gateway creado, explicación de los
-listeners configurados._
+## 6. Enrutamiento HTTP
 
-## 6. Caso de uso: enrutamiento HTTP
+HTTPRoute hacia el backend de prueba ([`docs/manifests/httpbin.yaml`](../docs/manifests/httpbin.yaml))
+y verificación con `curl`.
 
-_Despliegue de la app de prueba + HTTPRoute + prueba real con `curl` o
-navegador. Incluye comandos y salidas reales._
+## 7. Funcionalidades adicionales
 
-## 7. Funcionalidades adicionales (opcional, suma puntos)
+TLS, distribución por pesos, matching por headers, redirects, CORS, extensiones
+propias del controlador.
 
-_TLS, canary con weights, matching por headers, redirects, CORS… lo que
-explore el equipo._
+## 8. Pruebas
 
-## 8. Verificación y pruebas
-
-_Tabla de pruebas ejecutadas:_
-
-| # | Qué se probó | Comando | Resultado esperado | Resultado obtenido |
+| # | Caso | Comando | Resultado esperado | Resultado obtenido |
 |---|---|---|---|---|
-| 1 |  |  |  |  |
+| 1 | | | | |
 
 ## 9. Troubleshooting
 
-_Errores encontrados durante la implementación y cómo se resolvieron
-(mínimo 2; todos los equipos se encontrarán con varios 😄)._
+| Síntoma | Causa | Solución |
+|---|---|---|
+| | | |
 
-## 10. Conclusiones
+## 10. Limpieza
 
-_Fortalezas y debilidades del controlador, curva de aprendizaje, en qué
-escenarios lo elegirían._
+Comandos para eliminar todos los recursos creados.
 
-## 11. Referencias
+## 11. Análisis
 
-- _Enlaces oficiales y fuentes usadas._
+Ventajas, limitaciones, nivel de conformidad con Gateway API y casos de uso
+adecuados.
 
----
+## 12. Referencias
 
-## ✅ Definition of Done (revisar antes de abrir el PR)
+## Checklist
 
-- [ ] Todas las secciones completas (o justificadas).
-- [ ] Manifiestos finales en `manifests/`, funcionando **desde cero** en un clúster limpio.
-- [ ] Evidencias en `evidencias/` y referenciadas desde este README.
-- [ ] Comandos copiables y reproducibles.
-- [ ] Redacción en español, formato consistente con la plantilla.
-- [ ] Sin secretos, kubeconfigs ni archivos temporales.
+- [ ] Secciones completas o con motivo de omisión.
+- [ ] Manifiestos en `manifests/` probados desde un clúster limpio.
+- [ ] Evidencias en `evidencias/` referenciadas desde este README.
+- [ ] Versiones explícitas de todos los componentes.

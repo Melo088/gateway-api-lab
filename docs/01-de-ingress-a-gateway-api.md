@@ -1,11 +1,10 @@
-# 01 · De Ingress a Gateway API
+# 01. De Ingress a Gateway API
 
-## 🧱 ¿Qué es (era) Ingress?
+## Ingress
 
-`Ingress` es el recurso histórico de Kubernetes para exponer servicios HTTP y
-HTTPS hacia el exterior del clúster. El objeto `Ingress` define reglas de
-enrutamiento (host + path → Service) y un **Ingress Controller** (NGINX,
-Traefik, HAProxy…) es quien las ejecuta realmente.
+`Ingress` define reglas de enrutamiento HTTP (host y path hacia un Service). Un
+Ingress Controller (NGINX, Traefik, HAProxy, entre otros) observa esos objetos y
+configura el proxy que atiende el tráfico.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -13,7 +12,7 @@ kind: Ingress
 metadata:
   name: demo
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /   # ⚠️ específica de NGINX
+    nginx.ingress.kubernetes.io/rewrite-target: /   # específica de ingress-nginx
 spec:
   ingressClassName: nginx
   rules:
@@ -29,49 +28,45 @@ spec:
                   number: 80
 ```
 
-## ⚠️ Limitaciones de Ingress
+## Limitaciones
 
-1. **Solo HTTP/S.** TCP, UDP y gRPC requieren mecanismos por fuera del
-   estándar (ConfigMaps, CRDs propietarios de cada controlador).
-2. **Annotations no portables.** Todo lo útil (rewrites, rate-limit, canary,
-   auth…) depende 100 % del controlador. Un `Ingress` escrito para NGINX no
-   significa lo mismo en Traefik.
-3. **Sin separación de roles.** Quien opera la infraestructura (TLS, puertos,
-   DNS) y quien despliega aplicaciones (rutas) editan el mismo objeto →
-   conflictos y permisos excesivos.
-4. **Poco expresivo.** Matching limitado a host + path; sin pesos de tráfico,
-   sin matching por headers ni query params en el estándar.
-5. **Ecosistema fragmentado.** Cada controlador resolvió las carencias con sus
-   propios CRDs (`IngressRoute` de Traefik, `TCPIngress` de Kong…), empeorando
-   la portabilidad.
+1. **Protocolos.** Solo HTTP y HTTPS. TCP, UDP y gRPC requieren ConfigMaps o
+   CRDs propietarios.
+2. **Portabilidad.** Rewrites, canary, rate limiting y autenticación se
+   configuran con annotations específicas de cada controlador. Un mismo
+   `Ingress` no se comporta igual en dos implementaciones.
+3. **Roles.** Infraestructura (TLS, puertos) y aplicación (rutas) comparten un
+   único objeto, lo que obliga a otorgar permisos amplios.
+4. **Expresividad.** Matching limitado a host y path; sin pesos de tráfico ni
+   matching por headers o query params en la especificación.
+5. **Fragmentación.** Cada proveedor definió CRDs propios para cubrir estas
+   carencias (`IngressRoute` en Traefik, `TCPIngress` en Kong, `VirtualService`
+   en Istio).
 
-> 📌 **Ingress está congelado**: sigue soportado y no se eliminará, pero la
-> comunidad ya no le añade funcionalidades. Además, `ingress-nginx` (el
-> controlador comunitario más popular) fue **retirado en marzo de 2026**. Toda
-> la innovación ocurre hoy en Gateway API.
+La API de Ingress está congelada: continúa soportada, pero no recibe nuevas
+funcionalidades. `ingress-nginx` fue retirado en marzo de 2026.
 
-## 🚪 Gateway API: la evolución oficial
+## Gateway API
 
-Gateway API es una familia de CRDs mantenida por el **SIG-Network** de
-Kubernetes. Alcanzó **GA (v1.0) en octubre de 2023** y va por **v1.6.x**.
-Principios de diseño:
+Conjunto de CRDs del grupo `gateway.networking.k8s.io`, mantenido por
+SIG-Network. GA en v1.0 (octubre de 2023); versión estable actual v1.6.2.
 
-| Principio | Significado |
+| Principio | Descripción |
 |---|---|
-| **Orientado a roles** | Recursos separados para proveedor de infra, operador y desarrollador. |
-| **Portable** | El mismo YAML funciona igual en cualquier controlador conforme. |
-| **Expresivo** | Matching por header/query/método, pesos de tráfico, filtros tipados. |
-| **Extensible** | Puntos de extensión definidos sin romper la portabilidad. |
+| Orientado a roles | Recursos separados para proveedor, operador y desarrollador. |
+| Portable | Comportamiento definido por la especificación y verificado con pruebas de conformidad. |
+| Expresivo | Matching por header, query param y método; pesos; filtros tipados. |
+| Extensible | Puntos de extensión definidos (`parametersRef`, filtros `ExtensionRef`, policies). |
 
-### El mismo ejemplo, con Gateway API
+### Equivalente con Gateway API
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: gateway-principal
+  name: gateway
 spec:
-  gatewayClassName: <controlador>        # istio | cilium | kong | traefik
+  gatewayClassName: <gatewayclass>
   listeners:
     - name: http
       port: 80
@@ -83,7 +78,7 @@ metadata:
   name: demo
 spec:
   parentRefs:
-    - name: gateway-principal
+    - name: gateway
   hostnames:
     - demo.local
   rules:
@@ -92,29 +87,21 @@ spec:
           port: 80
 ```
 
-Sin annotations propietarias y portable entre controladores.
-👉 Detalle de cada recurso en
-[`02-recursos-de-gateway-api.md`](02-recursos-de-gateway-api.md).
-
-## 📊 Comparación rápida
+## Comparación
 
 | Criterio | Ingress | Gateway API |
 |---|---|---|
-| Protocolos | HTTP/S | HTTP, HTTPS, gRPC, TCP, UDP, TLS |
-| Roles separados | ❌ | ✅ |
-| Config avanzada | Annotations propietarias | Campos tipados del estándar |
-| Portabilidad | Baja | Alta (tests de conformidad) |
-| Multi-namespace | Limitado | Nativo (`ReferenceGrant`) |
-| Estado del proyecto | Congelado | Activo (GA desde 2023) |
+| Protocolos | HTTP, HTTPS | HTTP, HTTPS, gRPC, TLS, TCP, UDP |
+| Separación de roles | No | Sí |
+| Configuración avanzada | Annotations propietarias | Campos tipados de la especificación |
+| Portabilidad | Baja | Alta (conformidad) |
+| Referencias entre namespaces | No | Sí (`ReferenceGrant`) |
+| Estado | Congelada | En desarrollo activo |
 
-## ❓ ¿Ingress desaparece?
+Ingress no se elimina de Kubernetes, pero las nuevas capacidades de
+enrutamiento se desarrollan sobre Gateway API.
 
-No. Seguirá funcionando por años. Pero los desarrollos nuevos (service mesh,
-canary nativo, multi-protocolo) se construyen sobre Gateway API — por eso este
-laboratorio trabaja directamente con sus implementaciones: **Istio, Cilium,
-Kong y Traefik**.
-
-## 📚 Referencias
+## Referencias
 
 - <https://gateway-api.sigs.k8s.io/>
 - <https://kubernetes.io/docs/concepts/services-networking/ingress/>

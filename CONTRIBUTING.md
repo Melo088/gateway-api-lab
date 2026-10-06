@@ -1,84 +1,80 @@
-# 🤝 Guía de contribución
+# Contribución
 
-Este repositorio es colaborativo: 4 equipos documentan e implementan un
-controlador de Gateway API cada uno. Estas reglas existen para que todo el
-trabajo termine **mergeado en `main` con el mismo estilo**.
+## Ramas
 
-## 🔀 Modelo de ramas
+| Rama | Alcance |
+|---|---|
+| `main` | Contenido revisado. Protegida: solo admite cambios por Pull Request. |
+| `equipo/istio` | `istio/` |
+| `equipo/cilium` | `cilium/` |
+| `equipo/kong` | `kong/` |
+| `equipo/traefik` | `traefik/` |
 
-| Rama | Propósito | ¿Quién escribe? |
-|---|---|---|
-| `main` | Contenido revisado y aprobado. **Protegida.** | Nadie directamente (solo vía PR). |
-| `equipo/istio` | Trabajo del equipo Istio | Equipo 1 |
-| `equipo/cilium` | Trabajo del equipo Cilium | Equipo 2 |
-| `equipo/kong` | Trabajo del equipo Kong | Equipo 3 |
-| `equipo/traefik` | Trabajo del equipo Traefik | Equipo 4 |
+- Cada rama modifica únicamente su carpeta.
+- Cambios en `docs/`, `plantillas/` o archivos raíz se proponen en un Pull
+  Request independiente.
+- Las ramas se sincronizan con `main` antes de abrir un Pull Request:
 
 ```bash
-# Cambiarte a tu rama (ya existe en el remoto)
-git checkout equipo/<tu-controlador>
-
-# Mantenerla al día con main regularmente
+git checkout equipo/<implementacion>
 git pull origin main
 ```
 
-> **Regla de oro:** trabaja únicamente dentro de la carpeta de tu equipo
-> (`istio/`, `cilium/`, `kong/` o `traefik/`). Los cambios a `docs/` o
-> `plantillas/` se proponen por PR aparte y se acuerdan con todos.
+## Commits
 
-## ✍️ Convención de commits
-
-Usamos [Conventional Commits](https://www.conventionalcommits.org/es/) en
-español, con el controlador como scope:
+[Conventional Commits](https://www.conventionalcommits.org/es/), con la
+implementación como scope:
 
 ```text
-docs(istio): completar sección de instalación
-feat(kong): agregar ejemplo de canary 90/10
-fix(cilium): corregir puerto del listener https
+docs(istio): documentar instalación con istioctl
+feat(kong): agregar HTTPRoute con distribución 90/10
+fix(cilium): corregir puerto del listener HTTPS
 chore: actualizar .gitignore
 ```
 
-| Prefijo | Uso |
+| Tipo | Uso |
 |---|---|
-| `docs:` | documentación |
-| `feat:` | manifiestos, ejemplos, scripts |
-| `fix:` | correcciones |
-| `chore:` | mantenimiento |
+| `docs` | Documentación |
+| `feat` | Manifiestos, ejemplos, scripts |
+| `fix` | Correcciones |
+| `chore` | Mantenimiento |
 
-## 🔁 Pull Requests
+## Pull Requests
 
-1. Empuja tu rama: `git push origin equipo/<tu-controlador>`.
-2. Abre el PR hacia `main`. Título con formato: `[<Controlador>] <resumen>`
-   (ej. `[Cilium] Implementación y documentación completa`).
-3. Llena la **plantilla de PR** (aparece automáticamente).
-4. Solicita revisión a **@Melo088** (code owner).
-5. Atiende los comentarios hasta la aprobación.
+1. `git push origin equipo/<implementacion>`
+2. Abrir Pull Request hacia `main` con título `[<Implementación>] <resumen>`.
+3. Completar la plantilla del Pull Request.
+4. Resolver los comentarios de revisión.
 
-**Requisitos para merge a `main`:**
+Condiciones de merge:
 
-- ✅ 1 aprobación del code owner (la revisión es obligatoria).
-- ✅ Checklist del PR completo.
-- ✅ Conversaciones de revisión resueltas.
-- ❌ Push directo a `main` está bloqueado (incluye force push).
+- Una aprobación del code owner.
+- Conversaciones resueltas.
+- Rama actualizada con `main`.
 
-## 📐 Estilo de documentación
+Push directo y force push a `main` están bloqueados.
 
-- Español neutro, tono técnico pero claro.
-- Comandos en bloques ` ```bash `, manifiestos en ` ```yaml `.
-- Capturas en `evidencias/` con nombres descriptivos
-  (`instalacion-pods-ok.png`, no `Captura1.png`).
-- Referencia archivos del repo con rutas relativas.
-- Todo comando documentado debe ser **copiable y reproducible** en un clúster
-  limpio siguiendo tu README.
+## Estilo de documentación
 
-## 🚫 Qué evitar
+- Español, registro técnico.
+- Sin emojis.
+- Comandos en bloques `bash`; manifiestos en bloques `yaml`.
+- Versiones explícitas de cada componente instalado.
+- Comandos reproducibles en un clúster limpio, en el orden documentado.
+- Salidas de comandos en bloques `text`, recortadas a lo relevante.
+- Enlaces internos con rutas relativas.
+- Archivos de evidencia con nombres descriptivos en minúsculas y guiones
+  (`gateway-programmed.png`).
 
-- Push directo a `main`.
-- Editar la carpeta de otro equipo sin acordarlo.
-- Subir secretos, `kubeconfig` o archivos pesados (> 1–2 MB).
-- Commits tipo `wip`, `cambios`, `asdf`.
+## Manifiestos
 
-## ✅ Definition of Done
+- Un recurso o grupo de recursos relacionados por archivo.
+- Prefijo numérico según orden de aplicación (`00-namespace.yaml`,
+  `10-gateway.yaml`, `20-httproute.yaml`).
+- Aplicables con `kubectl apply -f <implementacion>/manifests/`.
 
-Antes de abrir el PR final, verifica el checklist de la
-[plantilla de implementación](plantillas/PLANTILLA-implementacion.md).
+## Restricciones
+
+- Sin secretos, kubeconfigs ni claves privadas.
+- Sin archivos binarios mayores a 2 MB.
+- Sin mensajes de commit genéricos (`wip`, `cambios`, `update`).

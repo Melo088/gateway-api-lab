@@ -1,98 +1,88 @@
-# 🌐 gateway-api-lab
+# gateway-api-lab
 
-> Laboratorio comparativo de implementaciones de **Kubernetes Gateway API**:
-> **Istio · Cilium · Kong · Traefik**
-> Proyecto colaborativo — Plataformas 2.
+Repositorio de referencia para implementar y documentar controladores de
+Kubernetes Gateway API: Istio, Cilium, Kong y Traefik.
 
-## 📖 Contexto rápido
+## Ingress
 
-### ¿Qué era Ingress?
+`Ingress` (`networking.k8s.io/v1`) es el recurso original de Kubernetes para
+exponer Services HTTP/HTTPS fuera del clúster. Define reglas de host y path
+hacia un Service; un Ingress Controller las ejecuta.
 
-**Ingress** es el recurso clásico de Kubernetes para exponer tráfico HTTP/HTTPS
-desde el exterior hacia los Services del clúster. Sigue funcionando, pero la API
-está **congelada** (ya no recibe nuevas funcionalidades) por sus limitaciones:
+Limitaciones:
 
-- Solo soporta **HTTP/S** de forma nativa (nada de TCP, UDP o gRPC).
-- La configuración útil se hace con **`annotations` propias de cada controlador**
-  → manifiestos **no portables** entre vendors.
-- **Mezcla responsabilidades**: infraestructura (TLS, puertos) y aplicación
-  (rutas) editan el mismo objeto.
-- Sin validación de tipos: un error en una annotation se descubre tarde.
+- Soporte nativo solo para HTTP y HTTPS.
+- Funcionalidad avanzada (rewrites, canary, rate limiting) dependiente de
+  annotations propias de cada controlador, lo que impide la portabilidad.
+- Un único objeto mezcla configuración de infraestructura (puertos, TLS) y de
+  aplicación (rutas).
+- Annotations sin validación de esquema.
 
-Como dato: `ingress-nginx`, el controlador comunitario más usado, fue retirado en
-**marzo de 2026**, lo que terminó de consolidar la migración hacia Gateway API.
+La API de Ingress está congelada: se mantiene, pero no recibe nuevas
+funcionalidades. El controlador `ingress-nginx` fue retirado en marzo de 2026.
 
-### ¿Qué es Gateway API?
+## Gateway API
 
-**Gateway API** es la evolución oficial de Ingress, mantenida por el
-**SIG-Network** de Kubernetes (GA desde v1.0 en 2023; la versión actual es
-**v1.6.x**). Es una familia de CRDs **orientada a roles**, **portable** entre
-controladores y **multi-protocolo** (HTTP, HTTPS, gRPC, TCP, UDP, TLS).
+Gateway API es el sucesor de Ingress, mantenido por SIG-Network. Es un conjunto
+de CRDs (`gateway.networking.k8s.io`), GA desde v1.0 (octubre de 2023), con
+v1.6.2 como versión estable actual. Sus características principales:
 
-| Recurso | Quién lo gestiona | Qué define |
+- Modelo orientado a roles: cada recurso corresponde a un responsable distinto.
+- Portabilidad entre implementaciones, verificada con pruebas de conformidad.
+- Soporte para HTTP, HTTPS, gRPC, TLS, TCP y UDP.
+- Matching por path, headers, query params y método; pesos de tráfico y
+  filtros tipados en la especificación.
+
+| Recurso | Responsable | Función |
 |---|---|---|
-| `GatewayClass` | Proveedor / plataforma | El "tipo" de gateway (el controlador que lo implementa). |
-| `Gateway` | Operador de plataforma | Punto de entrada de tráfico: listeners, puertos, TLS. |
-| `HTTPRoute` / `GRPCRoute` / `TCPRoute`… | Equipo de aplicación | Cómo enrutar el tráfico hacia los Services. |
+| `GatewayClass` | Proveedor de infraestructura | Declara el controlador que implementa los Gateways. |
+| `Gateway` | Operador del clúster | Define listeners: puertos, protocolos, hostnames y TLS. |
+| `HTTPRoute`, `GRPCRoute`, `TLSRoute`, ... | Desarrollador de la aplicación | Define el enrutamiento hacia los Services. |
 
-➡️ Profundiza en [`docs/01-de-ingress-a-gateway-api.md`](docs/01-de-ingress-a-gateway-api.md)
+Detalle en [`docs/01-de-ingress-a-gateway-api.md`](docs/01-de-ingress-a-gateway-api.md)
 y [`docs/02-recursos-de-gateway-api.md`](docs/02-recursos-de-gateway-api.md).
 
-## 🗂️ Estructura del repositorio
+## Estructura
 
 ```text
-├── docs/               # Contexto teórico y guía para levantar el entorno
-├── plantillas/         # Plantilla oficial de documentación por equipo
-├── istio/              # Espacio de trabajo del equipo Istio
-├── cilium/             # Espacio de trabajo del equipo Cilium
-├── kong/               # Espacio de trabajo del equipo Kong
-├── traefik/            # Espacio de trabajo del equipo Traefik
-├── CONTRIBUTING.md     # Flujo de ramas, PRs y reglas de estilo
-└── .github/            # Plantilla de PR y CODEOWNERS
+.
+├── docs/            Documentación común: conceptos y preparación del entorno
+├── plantillas/      Plantilla de documentación por implementación
+├── istio/           Implementación Istio
+├── cilium/          Implementación Cilium
+├── kong/            Implementación Kong
+├── traefik/         Implementación Traefik
+├── .github/         CODEOWNERS y plantilla de Pull Request
+└── CONTRIBUTING.md  Ramas, commits, Pull Requests y estilo
 ```
 
-Cada carpeta de equipo trae un `README.md` con pistas de inicio y dos
-subcarpetas: `manifests/` (YAMLs) y `evidencias/` (capturas y salidas).
+Cada carpeta de implementación contiene:
 
-## 🚀 Cómo empezar
-
-1. **Levanta tu clúster** siguiendo [`docs/03-levantar-el-entorno.md`](docs/03-levantar-el-entorno.md)
-   (minikube, kind, k3d o nube — no estás atado a ninguno).
-2. **Ubica tu carpeta** (`istio/`, `cilium/`, `kong/` o `traefik/`) y lee las
-   pistas de su `README.md`.
-3. **Documenta con la plantilla**:
-   [`plantillas/PLANTILLA-implementacion.md`](plantillas/PLANTILLA-implementacion.md).
-4. **Trabaja en tu rama** y abre PR cuando esté lista la entrega (ver abajo).
-
-## 🔀 Flujo de trabajo (resumen)
-
-- `main` está **protegida**: solo se actualiza mediante **Pull Request
-  aprobado** por el dueño del repositorio.
-- Cada equipo trabaja en su rama: `equipo/istio`, `equipo/cilium`,
-  `equipo/kong`, `equipo/traefik`.
-- Commits con [Conventional Commits](https://www.conventionalcommits.org/es/)
-  (`docs:`, `feat:`, `fix:`…).
-- Detalles completos en [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-```bash
-git checkout equipo/<tu-controlador>
-# ... trabajar solo dentro de tu carpeta ...
-git add . && git commit -m "docs(<controlador>): ..."
-git push origin equipo/<tu-controlador>
-# abrir PR hacia main desde GitHub
+```text
+<implementacion>/
+├── README.md        Documentación según plantillas/PLANTILLA-implementacion.md
+├── manifests/       Manifiestos YAML
+└── evidencias/      Capturas, salidas de comandos y diagramas
 ```
 
-## 👥 Equipos
+## Uso
 
-| Equipo | Controlador | Carpeta | Rama | Integrantes |
-|---|---|---|---|---|
-| 1 | Istio | [`istio/`](istio/) | `equipo/istio` | _por definir_ |
-| 2 | Cilium | [`cilium/`](cilium/) | `equipo/cilium` | _por definir_ |
-| 3 | Kong | [`kong/`](kong/) | `equipo/kong` | _por definir_ |
-| 4 | Traefik | [`traefik/`](traefik/) | `equipo/traefik` | _por definir_ |
+1. Preparar un clúster e instalar los CRDs de Gateway API:
+   [`docs/03-levantar-el-entorno.md`](docs/03-levantar-el-entorno.md).
+2. Seguir el `README.md` de la implementación correspondiente.
 
-## 📚 Referencias
+## Flujo de trabajo
 
-- [Gateway API — documentación oficial](https://gateway-api.sigs.k8s.io/)
-- [Lista oficial de implementaciones y su conformidad](https://gateway-api.sigs.k8s.io/implementations/)
-- [Guía de migración de Ingress a Gateway API](https://gateway-api.sigs.k8s.io/guides/migrating-from-ingress/)
+- `main` está protegida; solo recibe cambios mediante Pull Request aprobado por
+  el code owner.
+- Cada implementación se desarrolla en su rama: `equipo/istio`,
+  `equipo/cilium`, `equipo/kong`, `equipo/traefik`.
+- Commits según [Conventional Commits](https://www.conventionalcommits.org/es/).
+
+Reglas completas en [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Referencias
+
+- [Gateway API](https://gateway-api.sigs.k8s.io/)
+- [Implementaciones y conformidad](https://gateway-api.sigs.k8s.io/implementations/)
+- [Migración desde Ingress](https://gateway-api.sigs.k8s.io/guides/migrating-from-ingress/)

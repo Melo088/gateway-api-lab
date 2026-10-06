@@ -1,29 +1,24 @@
-## 📌 ¿Qué incluye este PR?
+## Descripción
 
-<!-- Resumen breve del cambio -->
+<!-- Cambios incluidos -->
 
-## 🧩 Equipo / controlador
+## Alcance
 
-- [ ] Istio
-- [ ] Cilium
-- [ ] Kong
-- [ ] Traefik
-- [ ] Transversal (docs/, plantillas/, repo)
+- [ ] istio
+- [ ] cilium
+- [ ] kong
+- [ ] traefik
+- [ ] Transversal (docs/, plantillas/, raíz)
 
-## ✅ Checklist
+## Checklist
 
-- [ ] El README de mi carpeta sigue la [plantilla](../plantillas/PLANTILLA-implementacion.md)
-- [ ] Los manifiestos de `manifests/` fueron probados en un clúster real
-- [ ] Las evidencias están en `evidencias/` y referenciadas desde el README
-- [ ] Los comandos documentados son copiables y reproducibles desde cero
-- [ ] Solo modifiqué archivos de mi carpeta (o lo acordé con los demás)
-- [ ] Sin secretos, kubeconfigs ni archivos temporales
-- [ ] Ortografía y formato revisados
+- [ ] El README sigue `plantillas/PLANTILLA-implementacion.md`.
+- [ ] Manifiestos probados en un clúster limpio.
+- [ ] Evidencias en `evidencias/` y referenciadas.
+- [ ] Solo se modificaron archivos del alcance indicado.
+- [ ] Sin secretos ni archivos temporales.
+- [ ] Rama actualizada con `main`.
 
-## 📸 Evidencias
+## Notas para revisión
 
-<!-- Capturas o salidas de terminal clave -->
-
-## ❓ Notas para el revisor
-
-<!-- Decisiones tomadas, dudas, cosas a las que prestar atención -->
+<!-- Decisiones técnicas, pendientes, puntos a revisar -->

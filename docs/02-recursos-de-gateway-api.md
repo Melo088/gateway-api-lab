@@ -1,23 +1,18 @@
-# 02 · Recursos de Gateway API
+# 02. Recursos de Gateway API
 
-## 🧭 Modelo general
+## Modelo
 
 ```text
-Proveedor infra        Operador plataforma         Equipo aplicación
-      │                       │                           │
-      ▼                       ▼                           ▼
- GatewayClass  ───────►    Gateway   ───────►   HTTPRoute / GRPCRoute /
- (el "tipo" de           (listeners,            TCPRoute / TLSRoute…
-  gateway)                puertos, TLS)               │
-                                                      ▼
-                                                   Services
+Proveedor de infraestructura   Operador del clúster      Desarrollador
+            |                          |                       |
+       GatewayClass  -------------> Gateway  -------------> xRoute  -----> Service
+   (controlador)             (listeners, TLS)         (reglas de enrutamiento)
 ```
 
-## 1️⃣ GatewayClass
+## GatewayClass
 
-Define el **tipo** de Gateway y qué controlador lo implementa. Es un recurso a
-nivel de clúster y **normalmente lo crea la instalación del controlador** (no
-suele ser necesario crearlo a mano).
+Recurso de ámbito clúster que asocia un nombre con el controlador que lo
+implementa. Normalmente lo crea la instalación del controlador.
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -28,36 +23,32 @@ spec:
   controllerName: example.net/gateway-controller
 ```
 
-```bash
-kubectl get gatewayclass   # ver las disponibles tras instalar un controlador
-```
+## Gateway
 
-## 2️⃣ Gateway
-
-Punto de entrada del tráfico. Define **listeners**: puerto, protocolo, hostname
-y TLS. Lo gestiona el rol de plataforma.
+Instancia de punto de entrada. Define listeners con puerto, protocolo, hostname,
+TLS y qué rutas pueden adjuntarse.
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: gateway-principal
+  name: gateway
   namespace: default
 spec:
-  gatewayClassName: <controlador>
+  gatewayClassName: <gatewayclass>
   listeners:
     - name: http
       port: 80
       protocol: HTTP
-      allowedRoutes:            # qué rutas se pueden adjuntar
+      allowedRoutes:
         namespaces:
           from: Same            # Same | All | Selector
 ```
 
-## 3️⃣ HTTPRoute (la estrella)
+## HTTPRoute
 
-Reglas de enrutamiento HTTP. Se **adjunta** a un Gateway vía `parentRefs` y la
-gestiona el equipo de aplicación.
+Reglas de enrutamiento HTTP. Se adjunta a uno o varios Gateways mediante
+`parentRefs`.
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -66,9 +57,9 @@ metadata:
   name: mi-app
 spec:
   parentRefs:
-    - name: gateway-principal
+    - name: gateway
   hostnames:
-    - "demo.local"
+    - demo.local
   rules:
     - matches:
         - path:
@@ -78,19 +69,19 @@ spec:
         - type: RequestHeaderModifier
           requestHeaderModifier:
             add:
-              - name: x-equipo
-                value: plataformas2
+              - name: x-env
+                value: lab
       backendRefs:
         - name: mi-app
           port: 8080
 ```
 
-Capacidades que Ingress no tenía en el estándar:
+Capacidades definidas en la especificación:
 
-- **Matching** por path, header, query param y método.
-- **Filtros**: `URLRewrite`, `RequestRedirect`, `RequestHeaderModifier`,
-  `CORS` (v1.5+), extensiones del controlador.
-- **Pesos en backendRefs** → canary nativo:
+- Matching por path, header, query param y método.
+- Filtros: `RequestHeaderModifier`, `ResponseHeaderModifier`, `URLRewrite`,
+  `RequestRedirect`, `RequestMirror`, `CORS`, `ExtensionRef`.
+- Distribución de tráfico por pesos:
 
 ```yaml
       backendRefs:
@@ -102,45 +93,50 @@ Capacidades que Ingress no tenía en el estándar:
           weight: 10
 ```
 
-- **Timeouts** tipados en la regla (`timeouts.request`).
+- Timeouts por regla (`timeouts.request`, `timeouts.backendRequest`).
 
-## 4️⃣ Otras rutas
+## Otros tipos de ruta
 
 | Recurso | Canal | Uso |
 |---|---|---|
-| `GRPCRoute` | Standard (v1) | gRPC |
-| `TLSRoute` | Standard (v1, desde v1.5) | TLS passthrough/SNI |
-| `TCPRoute` / `UDPRoute` | Experimental (`v1alpha2`) | L4 genérico |
+| `GRPCRoute` | Standard (`v1`) | gRPC |
+| `TLSRoute` | Standard (`v1`, desde v1.5) | Enrutamiento por SNI, TLS passthrough |
+| `TCPRoute`, `UDPRoute` | Experimental (`v1alpha2`) | Tráfico L4 |
 
-## 5️⃣ ReferenceGrant
+## ReferenceGrant
 
-Permite referencias **entre namespaces** de forma segura (ej. un `HTTPRoute` en
-`app` apuntando a un `Service` en `backend`). Sin él, la referencia se rechaza.
+Autoriza referencias entre namespaces, por ejemplo un `HTTPRoute` en `app` hacia
+un `Service` en `backend`. Sin un `ReferenceGrant` en el namespace destino, la
+referencia se rechaza.
 
-## 6️⃣ Estado y verificación
+## ListenerSet
 
-Los recursos reportan condiciones estándar: `Accepted`, `Programmed`,
-`ResolvedRefs`. Comandos útiles:
+Permite definir listeners en recursos separados del `Gateway` y adjuntarlos a
+él. Standard desde v1.5.
+
+## Estado
+
+Los recursos publican condiciones en `status`: `Accepted`, `Programmed` y
+`ResolvedRefs`.
 
 ```bash
 kubectl get gatewayclass
 kubectl get gateway -A
 kubectl get httproute -A
-kubectl describe gateway gateway-principal     # conditions y listeners
-kubectl describe httproute mi-app              # si fue aceptada y por qué
+kubectl describe gateway <nombre>
+kubectl describe httproute <nombre>
 ```
 
-## 7️⃣ Canales de instalación: Standard vs Experimental
+## Canales de instalación
 
-- **Standard**: solo lo GA (GatewayClass, Gateway, HTTPRoute, GRPCRoute,
-  TLSRoute, ReferenceGrant…).
-- **Experimental**: lo Standard + features alpha (TCPRoute, UDPRoute,
-  ListenerSet…). Los CRDs son tan grandes que requieren
-  `kubectl apply --server-side=true`.
+| Canal | Contenido |
+|---|---|
+| Standard | Recursos GA: GatewayClass, Gateway, HTTPRoute, GRPCRoute, TLSRoute, ListenerSet, ReferenceGrant, BackendTLSPolicy. |
+| Experimental | Standard más recursos y campos en alpha (TCPRoute, UDPRoute, entre otros). Requiere `kubectl apply --server-side=true`. |
 
-Comandos de instalación en [`03-levantar-el-entorno.md`](03-levantar-el-entorno.md).
+Instalación en [`03-levantar-el-entorno.md`](03-levantar-el-entorno.md).
 
-## 📚 Referencias
+## Referencias
 
 - <https://gateway-api.sigs.k8s.io/concepts/api-overview/>
-- <https://gateway-api.sigs.k8s.io/guides/>
+- <https://gateway-api.sigs.k8s.io/reference/spec/>
