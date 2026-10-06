@@ -1,0 +1,28 @@
+# gatewayClassName se reemplaza en el overlay de cada implementación.
+# El listener https requiere el Secret gateway-tls (scripts/crear-certificado.sh).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway
+spec:
+  gatewayClassName: sin-definir
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: "*.lab.local"
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.lab.local"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: gateway-tls
+      allowedRoutes:
+        namespaces:
+          from: Same

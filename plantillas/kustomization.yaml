@@ -1,0 +1,30 @@
+# Overlay de una implementación sobre la base común.
+# Copiar a <implementacion>/manifests/kustomization.yaml y reemplazar <gatewayclass>.
+#
+# Fuera de este repositorio, la base se referencia de forma remota:
+#   - https://github.com/Melo088/gateway-api-lab//comun?ref=main
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../comun
+  # Recursos propios de la implementación (GatewayClass, policies, CRDs del proveedor):
+  # - gatewayclass.yaml
+patches:
+  - target:
+      kind: Gateway
+      name: gateway
+    patch: |-
+      - op: replace
+        path: /spec/gatewayClassName
+        value: <gatewayclass>
+  # Solo si el controlador exige puertos de listener distintos a 80/443:
+  # - target:
+  #     kind: Gateway
+  #     name: gateway
+  #   patch: |-
+  #     - op: replace
+  #       path: /spec/listeners/0/port
+  #       value: 8000
+  #     - op: replace
+  #       path: /spec/listeners/1/port
+  #       value: 8443

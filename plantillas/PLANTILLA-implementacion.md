@@ -34,24 +34,38 @@ Comandos en orden de ejecución, con verificación después de cada paso.
 
 ## 5. GatewayClass y Gateway
 
-GatewayClass registrada por el controlador, Gateway desplegado, listeners y
-recursos que aprovisiona el controlador (Deployment, Service).
+GatewayClass registrada por el controlador, contenido del overlay
+(`manifests/kustomization.yaml`) y recursos que el controlador aprovisiona para
+el Gateway (Deployment, Service).
 
-## 6. Enrutamiento HTTP
+## 6. Escenarios comunes
 
-HTTPRoute hacia el backend de prueba ([`docs/manifests/httpbin.yaml`](../docs/manifests/httpbin.yaml))
-y verificación con `curl`.
+Resultado de [`scripts/verificar.sh`](../scripts/verificar.sh) sobre los
+escenarios de [`docs/04-escenarios.md`](../docs/04-escenarios.md).
 
-## 7. Funcionalidades adicionales
+```text
+salida de scripts/verificar.sh
+```
 
-TLS, distribución por pesos, matching por headers, redirects, CORS, extensiones
-propias del controlador.
+| ID | Resultado | Observaciones |
+|---|---|---|
+| E01 | | |
+| E02 | | |
+| E03 | | |
+| E04 | | |
+| E05 | | |
+| E06 | | |
+| E07 | | |
 
-## 8. Pruebas
+## 7. Comportamiento específico
 
-| # | Caso | Comando | Resultado esperado | Resultado obtenido |
-|---|---|---|---|---|
-| 1 | | | | |
+Diferencias observadas frente a la especificación, funcionalidades no
+soportadas y alternativas propias del controlador.
+
+## 8. Extensiones del controlador
+
+Funcionalidades fuera de Gateway API (policies, plugins, CRDs propios) con
+manifiestos en `manifests/` y prueba de funcionamiento.
 
 ## 9. Troubleshooting
 
@@ -73,6 +87,6 @@ adecuados.
 ## Checklist
 
 - [ ] Secciones completas o con motivo de omisión.
-- [ ] Manifiestos en `manifests/` probados desde un clúster limpio.
+- [ ] `scripts/verificar.sh` ejecutado desde un clúster limpio; salida incluida en la sección 6.
 - [ ] Evidencias en `evidencias/` referenciadas desde este README.
 - [ ] Versiones explícitas de todos los componentes.

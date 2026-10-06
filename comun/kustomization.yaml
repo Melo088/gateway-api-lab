@@ -1,0 +1,7 @@
+# Base común y escenarios. Las implementaciones la referencian como recurso
+# y reemplazan spec.gatewayClassName del Gateway.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - base
+  - escenarios

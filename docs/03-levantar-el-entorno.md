@@ -60,7 +60,7 @@ la versión garantiza reproducibilidad.
 # Canal Standard
 kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
 
-# Canal Experimental (TCPRoute, UDPRoute, campos alpha)
+# Canal Experimental (campos y recursos en desarrollo)
 kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/experimental-install.yaml
 ```
 
@@ -71,22 +71,13 @@ kubectl get crd | grep gateway.networking.k8s.io
 Algunos controladores instalan sus propios CRDs de Gateway API o exigen una
 versión específica. Cada implementación documenta la versión requerida.
 
-## Backend de prueba
-
-[`docs/manifests/httpbin.yaml`](manifests/httpbin.yaml) define un Deployment y un
-Service `httpbin` (puerto 8080) comunes a todas las implementaciones.
-
-```bash
-kubectl apply -f docs/manifests/httpbin.yaml
-kubectl rollout status deployment/httpbin
-kubectl port-forward svc/httpbin 8080:8080
-curl -s localhost:8080/get
-```
-
 ## Verificación del entorno
 
 ```bash
 kubectl get nodes
 kubectl get crd | grep gateway.networking.k8s.io
-kubectl get gatewayclass
+kubectl get gatewayclass       # vacío hasta instalar un controlador
 ```
+
+Siguiente paso: instalar el controlador según el README de la implementación y
+ejecutar los escenarios de [`04-escenarios.md`](04-escenarios.md).

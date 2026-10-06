@@ -1,0 +1,27 @@
+# E04. Modificación de headers de petición y respuesta.
+# Soporte: RequestHeaderModifier Core, ResponseHeaderModifier Extended.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: e04-modificar-headers
+spec:
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - headers.lab.local
+  rules:
+    - filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            add:
+              - name: x-gateway-lab
+                value: request
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: x-gateway-lab
+                value: response
+      backendRefs:
+        - name: httpbin-v1
+          port: 8080

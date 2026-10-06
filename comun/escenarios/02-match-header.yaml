@@ -1,0 +1,23 @@
+# E02. Matching por header: x-version: v2 hacia httpbin-v2; resto hacia httpbin-v1. Soporte: Core.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: e02-match-header
+spec:
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - match.lab.local
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-version
+              value: v2
+      backendRefs:
+        - name: httpbin-v2
+          port: 8080
+    - backendRefs:
+        - name: httpbin-v1
+          port: 8080

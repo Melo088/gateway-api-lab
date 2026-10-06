@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: gateway-lab
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: gateway-api-lab
+resources:
+  - 01-enrutamiento.yaml
+  - 02-match-header.yaml
+  - 03-pesos.yaml
+  - 04-modificar-headers.yaml
+  - 05-rewrite.yaml
+  - 06-redirect.yaml
+  - 07-tls.yaml

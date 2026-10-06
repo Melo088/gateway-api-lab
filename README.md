@@ -46,30 +46,46 @@ y [`docs/02-recursos-de-gateway-api.md`](docs/02-recursos-de-gateway-api.md).
 
 ```text
 .
-├── docs/            Documentación común: conceptos y preparación del entorno
-├── plantillas/      Plantilla de documentación por implementación
-├── istio/           Implementación Istio
-├── cilium/          Implementación Cilium
-├── kong/            Implementación Kong
-├── traefik/         Implementación Traefik
-├── .github/         CODEOWNERS y plantilla de Pull Request
-└── CONTRIBUTING.md  Ramas, commits, Pull Requests y estilo
+├── comun/
+│   ├── base/          Namespace, backends httpbin v1/v2 y Gateway
+│   └── escenarios/    HTTPRoutes de los escenarios E01-E07
+├── scripts/           Certificado TLS de prueba y verificación de escenarios
+├── docs/              Conceptos, preparación del entorno y escenarios
+├── plantillas/        Plantillas de documentación y de overlay kustomize
+├── istio/             Implementación Istio
+├── cilium/            Implementación Cilium
+├── kong/              Implementación Kong
+├── traefik/           Implementación Traefik
+├── .github/           CODEOWNERS, plantilla de Pull Request y validación CI
+└── CONTRIBUTING.md    Ramas, commits, Pull Requests y estilo
 ```
 
 Cada carpeta de implementación contiene:
 
 ```text
 <implementacion>/
-├── README.md        Documentación según plantillas/PLANTILLA-implementacion.md
-├── manifests/       Manifiestos YAML
-└── evidencias/      Capturas, salidas de comandos y diagramas
+├── README.md          Documentación según plantillas/PLANTILLA-implementacion.md
+├── instalacion/       Values de Helm, perfiles u otros archivos de instalación del controlador
+├── manifests/         Overlay kustomize sobre comun/ y recursos propios del controlador
+└── evidencias/        Capturas, salidas de comandos y diagramas
 ```
+
+Los manifiestos de `comun/` son los mismos para todas las implementaciones; cada
+overlay solo define la GatewayClass y los ajustes que exija su controlador.
 
 ## Uso
 
-1. Preparar un clúster e instalar los CRDs de Gateway API:
-   [`docs/03-levantar-el-entorno.md`](docs/03-levantar-el-entorno.md).
-2. Seguir el `README.md` de la implementación correspondiente.
+```bash
+# Clúster con CRDs de Gateway API: docs/03-levantar-el-entorno.md
+# Controlador instalado:           <implementacion>/README.md
+
+scripts/crear-certificado.sh
+kubectl apply -k <implementacion>/manifests
+scripts/verificar.sh
+```
+
+Escenarios, convenciones, acceso al Gateway y uso en un clúster propio:
+[`docs/04-escenarios.md`](docs/04-escenarios.md).
 
 ## Flujo de trabajo
 

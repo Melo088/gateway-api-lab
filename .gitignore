@@ -14,6 +14,9 @@ kubeconfig
 *-kubeconfig.yaml
 secrets/
 *.secret.yaml
+*.key
+*.crt
+*.pem
 
 # Temporales
 *.log

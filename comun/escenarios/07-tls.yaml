@@ -1,0 +1,17 @@
+# E07. Terminación TLS en el listener https. Soporte: Core.
+# También atiende redirect.lab.local, destino de la redirección de E06.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: e07-tls
+spec:
+  parentRefs:
+    - name: gateway
+      sectionName: https
+  hostnames:
+    - tls.lab.local
+    - redirect.lab.local
+  rules:
+    - backendRefs:
+        - name: httpbin-v1
+          port: 8080

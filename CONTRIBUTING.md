@@ -68,10 +68,25 @@ Push directo y force push a `main` están bloqueados.
 
 ## Manifiestos
 
-- Un recurso o grupo de recursos relacionados por archivo.
-- Prefijo numérico según orden de aplicación (`00-namespace.yaml`,
-  `10-gateway.yaml`, `20-httproute.yaml`).
-- Aplicables con `kubectl apply -f <implementacion>/manifests/`.
+- `comun/` es compartido. Ninguna implementación lo modifica; los cambios se
+  proponen en un Pull Request transversal.
+- `<implementacion>/manifests/kustomization.yaml` parte de
+  [`plantillas/kustomization.yaml`](plantillas/kustomization.yaml): referencia
+  `comun/` y reemplaza `gatewayClassName`.
+- Ajustes requeridos por el controlador (puertos de listener, GatewayClass,
+  policies, CRDs del proveedor) se aplican como patches o recursos adicionales
+  del overlay, documentados en el README.
+- Archivos de instalación del controlador (values de Helm, perfiles) en
+  `<implementacion>/instalacion/`, con versión del chart explícita.
+- `kubectl apply -k <implementacion>/manifests` seguido de
+  `scripts/verificar.sh` debe ejecutarse sin errores en un clúster limpio con
+  el controlador instalado.
+
+## Validación
+
+Cada Pull Request ejecuta [`.github/workflows/validar.yaml`](.github/workflows/validar.yaml):
+renderizado de cada kustomization, validación de esquemas con kubeconform y
+shellcheck sobre `scripts/`.
 
 ## Restricciones
 

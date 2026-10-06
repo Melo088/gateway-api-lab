@@ -1,0 +1,25 @@
+# E05. Reescritura de path: /api/<ruta> hacia /<ruta>. Soporte: Extended.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: e05-rewrite
+spec:
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - rewrite.lab.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: httpbin-v1
+          port: 8080

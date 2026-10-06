@@ -101,7 +101,7 @@ Capacidades definidas en la especificación:
 |---|---|---|
 | `GRPCRoute` | Standard (`v1`) | gRPC |
 | `TLSRoute` | Standard (`v1`, desde v1.5) | Enrutamiento por SNI, TLS passthrough |
-| `TCPRoute`, `UDPRoute` | Experimental (`v1alpha2`) | Tráfico L4 |
+| `TCPRoute`, `UDPRoute` | Standard (`v1`, desde v1.6) | Tráfico L4 |
 
 ## ReferenceGrant
 
@@ -131,8 +131,8 @@ kubectl describe httproute <nombre>
 
 | Canal | Contenido |
 |---|---|
-| Standard | Recursos GA: GatewayClass, Gateway, HTTPRoute, GRPCRoute, TLSRoute, ListenerSet, ReferenceGrant, BackendTLSPolicy. |
-| Experimental | Standard más recursos y campos en alpha (TCPRoute, UDPRoute, entre otros). Requiere `kubectl apply --server-side=true`. |
+| Standard | Recursos GA: GatewayClass, Gateway, HTTPRoute, GRPCRoute, TLSRoute, TCPRoute, UDPRoute, ListenerSet, ReferenceGrant, BackendTLSPolicy. |
+| Experimental | Standard más recursos y campos en desarrollo. Requiere `kubectl apply --server-side=true`. |
 
 Instalación en [`03-levantar-el-entorno.md`](03-levantar-el-entorno.md).
 
