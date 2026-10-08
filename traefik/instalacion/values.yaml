@@ -1,0 +1,30 @@
+providers:
+  kubernetesGateway:
+    enabled: true
+    statusAddress:
+      service:
+        name: traefik
+        namespace: traefik
+  kubernetesCRD:
+    enabled: false
+  kubernetesIngress:
+    enabled: false
+
+gateway:
+  enabled: false
+
+gatewayClass:
+  enabled: true
+
+ports:
+  web:
+    port: 8000
+    exposedPort: 80
+    protocol: TCP
+  websecure:
+    port: 8443
+    exposedPort: 443
+    protocol: TCP
+
+service:
+  type: LoadBalancer
