@@ -1,0 +1,53 @@
+$ istioctl version --remote=false
+client version: 1.31.2
+
+$ istioctl x precheck
+✔ No issues found when checking the cluster. Istio is safe to install or upgrade!
+  To get started, check out https://istio.io/latest/docs/setup/getting-started/.
+
+$ istioctl manifest generate -f istio/instalacion/istio.yaml 2>/dev/null | grep -E '^kind:' | sort | uniq -c
+      6 kind: ClusterRole
+      6 kind: ClusterRoleBinding
+      4 kind: ConfigMap
+     15 kind: CustomResourceDefinition
+      2 kind: DaemonSet
+      1 kind: Deployment
+      1 kind: HorizontalPodAutoscaler
+      1 kind: MutatingWebhookConfiguration
+      1 kind: Role
+      1 kind: RoleBinding
+      1 kind: Service
+      4 kind: ServiceAccount
+      1 kind: ValidatingWebhookConfiguration
+
+$ istioctl install -f istio/instalacion/istio.yaml -y 2>&1 | grep -E '✔|Installation'
+✔ Istio core installed ⛵️
+✔ CNI installed 🪢
+✔ Istiod installed 🧠
+✔ Ztunnel installed 🔒
+✔ Installation completeThe ambient profile has been installed successfully, enjoy Istio without sidecars!
+
+$ kubectl -n istio-system get pods,daemonsets,deployments
+NAME                        READY   STATUS    RESTARTS   AGE
+pod/istio-cni-node-2cw2w    1/1     Running   0          42s
+pod/istiod-65b47f79-krrmj   1/1     Running   0          42s
+pod/ztunnel-jnggp           1/1     Running   0          34s
+
+NAME                            DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR            AGE
+daemonset.apps/istio-cni-node   1         1         1       1            1           kubernetes.io/os=linux   42s
+daemonset.apps/ztunnel          1         1         1       1            1           kubernetes.io/os=linux   34s
+
+NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/istiod   1/1     1            1           42s
+
+$ kubectl get gatewayclass
+NAME             CONTROLLER                    ACCEPTED   AGE
+istio            istio.io/gateway-controller   True       30s
+istio-remote     istio.io/unmanaged-gateway    True       30s
+istio-waypoint   istio.io/mesh-controller      True       30s
+
+$ istioctl version
+client version: 1.31.2
+control plane version: 1.31.2
+data plane version: 1.31.2 (1 proxies)
+

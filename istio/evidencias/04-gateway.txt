@@ -1,0 +1,53 @@
+$ kubectl kustomize istio/manifests | grep -E 'kind: Gateway|gatewayClassName'
+kind: Gateway
+  gatewayClassName: istio
+
+$ scripts/crear-certificado.sh
+namespace/gateway-lab created
+secret/gateway-tls created
+
+$ kubectl apply -k istio/manifests
+namespace/gateway-lab configured
+service/httpbin-v1 created
+service/httpbin-v2 created
+deployment.apps/httpbin-v1 created
+deployment.apps/httpbin-v2 created
+gateway.gateway.networking.k8s.io/gateway created
+httproute.gateway.networking.k8s.io/e01-enrutamiento created
+httproute.gateway.networking.k8s.io/e02-match-header created
+httproute.gateway.networking.k8s.io/e03-pesos created
+httproute.gateway.networking.k8s.io/e04-modificar-headers created
+httproute.gateway.networking.k8s.io/e05-rewrite created
+httproute.gateway.networking.k8s.io/e06-redirect created
+httproute.gateway.networking.k8s.io/e07-tls created
+
+$ kubectl -n gateway-lab wait --for=condition=Available deploy --all --timeout=180s
+deployment.apps/gateway-istio condition met
+deployment.apps/httpbin-v1 condition met
+deployment.apps/httpbin-v2 condition met
+
+$ kubectl -n gateway-lab get gateway gateway -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}'
+Accepted=True Accepted: Resource accepted
+Programmed=False AddressNotAssigned: Assigned to service(s) gateway-istio.gateway-lab.svc.cluster.local:443 and gateway-istio.gateway-lab.svc.cluster.local:80, but failed to assign to all requested addresses: address pending for hostname "gateway-istio.gateway-lab.svc.cluster.local"
+ResolvedRefs=True ResolvedRefs: All references resolved
+
+$ kubectl -n gateway-lab get deploy,svc,pods -l gateway.networking.k8s.io/gateway-name=gateway
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/gateway-istio   1/1     1            1           13s
+
+NAME                    TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                      AGE
+service/gateway-istio   LoadBalancer   10.108.55.141   <pending>     15021:32474/TCP,80:30777/TCP,443:30394/TCP   13s
+
+NAME                                 READY   STATUS    RESTARTS   AGE
+pod/gateway-istio-64ffb4c6bf-w7rkb   1/1     Running   0          13s
+
+$ kubectl -n gateway-lab get httproute
+NAME                    HOSTNAMES                                AGE
+e01-enrutamiento        ["enrutamiento.lab.local"]               13s
+e02-match-header        ["match.lab.local"]                      13s
+e03-pesos               ["pesos.lab.local"]                      13s
+e04-modificar-headers   ["headers.lab.local"]                    13s
+e05-rewrite             ["rewrite.lab.local"]                    13s
+e06-redirect            ["redirect.lab.local"]                   13s
+e07-tls                 ["tls.lab.local","redirect.lab.local"]   13s
+
