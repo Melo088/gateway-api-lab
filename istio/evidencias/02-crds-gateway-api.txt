@@ -1,0 +1,27 @@
+$ kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
+customresourcedefinition.apiextensions.k8s.io/backendtlspolicies.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/gatewayclasses.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/gateways.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/grpcroutes.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/httproutes.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/listenersets.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/referencegrants.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/tcproutes.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/tlsroutes.gateway.networking.k8s.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/udproutes.gateway.networking.k8s.io serverside-applied
+validatingadmissionpolicy.admissionregistration.k8s.io/safe-upgrades.gateway.networking.k8s.io serverside-applied
+validatingadmissionpolicybinding.admissionregistration.k8s.io/safe-upgrades.gateway.networking.k8s.io serverside-applied
+
+$ kubectl get crd -o custom-columns='NAME:.metadata.name,VERSION:.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version,CHANNEL:.metadata.annotations.gateway\.networking\.k8s\.io/channel' | grep -E 'NAME|gateway'
+NAME                                           VERSION   CHANNEL
+backendtlspolicies.gateway.networking.k8s.io   v1.6.2    standard
+gatewayclasses.gateway.networking.k8s.io       v1.6.2    standard
+gateways.gateway.networking.k8s.io             v1.6.2    standard
+grpcroutes.gateway.networking.k8s.io           v1.6.2    standard
+httproutes.gateway.networking.k8s.io           v1.6.2    standard
+listenersets.gateway.networking.k8s.io         v1.6.2    standard
+referencegrants.gateway.networking.k8s.io      v1.6.2    standard
+tcproutes.gateway.networking.k8s.io            v1.6.2    standard
+tlsroutes.gateway.networking.k8s.io            v1.6.2    standard
+udproutes.gateway.networking.k8s.io            v1.6.2    standard
+

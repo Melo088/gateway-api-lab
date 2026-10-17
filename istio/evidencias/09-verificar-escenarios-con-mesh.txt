@@ -1,0 +1,13 @@
+$ GATEWAY_ADDRESS=192.168.58.2 HTTP_PORT=30777 HTTPS_PORT=30394 scripts/verificar.sh
+Gateway: gateway-lab/gateway  Dirección: 192.168.58.2  HTTP: 30777  HTTPS: 30394
+
+PASS  E01  Enrutamiento por hostname y path
+PASS  E02  Matching por header x-version
+PASS  E03  Pesos 80/20 (15/100 hacia v2)
+PASS  E04  Modificación de headers de petición y respuesta
+PASS  E05  Rewrite /api/<ruta> hacia /<ruta>
+PASS  E06  Redirección HTTP a HTTPS (301)
+PASS  E07  Terminación TLS
+
+Fallos: 0/7
+

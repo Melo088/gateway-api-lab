@@ -1,0 +1,44 @@
+# X01. Autorización L7 en el Gateway con AuthorizationPolicy de Istio.
+# El Gateway rechaza con 403 /anything/privado* en authz.lab.local antes de
+# enrutar; el resto de paths llega al backend.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: x01-authz
+  namespace: gateway-lab
+spec:
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - authz.lab.local
+  rules:
+    - backendRefs:
+        - name: httpbin-v1
+          port: 8080
+---
+# targetRefs asocia la política al Deployment que Istio genera para el Gateway.
+# DENY se evalúa antes que ALLOW; sin políticas ALLOW, todo lo no denegado pasa.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: x01-authz
+  namespace: gateway-lab
+spec:
+  targetRefs:
+    - kind: Gateway
+      group: gateway.networking.k8s.io
+      name: gateway
+  action: DENY
+  rules:
+    - to:
+        - operation:
+            # Puerto del listener http; sin él, Istio advierte que la regla
+            # también bloquearía tráfico TCP no HTTP.
+            ports:
+              - "80"
+            hosts:
+              - authz.lab.local
+              - authz.lab.local:*
+            paths:
+              - /anything/privado*
