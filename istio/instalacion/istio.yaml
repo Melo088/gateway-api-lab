@@ -1,0 +1,18 @@
+# Configuración de instalación de Istio 1.31.2 para istioctl.
+#   istioctl install -f istio/instalacion/istio.yaml -y
+#
+# IstioOperator no se aplica al clúster: istioctl lo lee localmente, genera los
+# manifiestos (CRDs de Istio, istiod, istio-cni, ztunnel) y los aplica en orden.
+# Inspección previa sin cambios: istioctl manifest generate -f istio/instalacion/istio.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  # ambient: istiod (control plane) + istio-cni + ztunnel (data plane L4 por nodo).
+  # Los Gateways de Gateway API se despliegan bajo demanda; el perfil no incluye
+  # ingress gateway propio.
+  profile: ambient
+  tag: 1.31.2
+  values:
+    global:
+      # Obligatorio en minikube con driver docker para istio-cni.
+      platform: minikube
