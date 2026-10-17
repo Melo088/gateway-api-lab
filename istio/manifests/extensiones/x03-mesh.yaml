@@ -1,0 +1,99 @@
+# X03. Service mesh en modo ambient: mTLS estricto, waypoint y enrutamiento
+# este-oeste con Gateway API (GAMMA).
+# La kustomization etiqueta el namespace gateway-lab con
+# istio.io/dataplane-mode=ambient (ztunnel intercepta el tráfico de sus pods) y el
+# Service httpbin-v1 con istio.io/use-waypoint=waypoint.
+
+# Solo se acepta tráfico mTLS (HBONE) hacia los pods de gateway-lab.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: gateway-lab
+spec:
+  mtls:
+    mode: STRICT
+---
+# Waypoint: proxy L7 del mesh. Es un Gateway de Gateway API con la clase
+# istio-waypoint; Istio crea el Deployment y el Service "waypoint".
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: waypoint
+  namespace: gateway-lab
+  labels:
+    istio.io/waypoint-for: service
+spec:
+  gatewayClassName: istio-waypoint
+  listeners:
+    - name: mesh
+      port: 15008
+      protocol: HBONE
+---
+# GAMMA: el parentRef es un Service, no un Gateway. Aplica al tráfico interno
+# dirigido a httpbin-v1:8080 y lo reparte 50/50 entre v1 y v2. El gateway de
+# entrada no pasa por el waypoint, por lo que E01-E07 no cambian.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: x03-mesh
+  namespace: gateway-lab
+spec:
+  parentRefs:
+    - group: ""
+      kind: Service
+      name: httpbin-v1
+      port: 8080
+  rules:
+    - backendRefs:
+        - name: httpbin-v1
+          port: 8080
+          weight: 50
+        - name: httpbin-v2
+          port: 8080
+          weight: 50
+---
+# Cliente dentro del mesh (hereda el modo ambient del namespace).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cliente
+  namespace: gateway-lab
+  labels:
+    app: cliente
+spec:
+  containers:
+    - name: curl
+      image: curlimages/curl:8.22.0
+      command: ["sleep", "infinity"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi
+---
+# Cliente fuera del mesh: envía texto plano y PeerAuthentication STRICT lo rechaza.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fuera-mesh
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cliente
+  namespace: fuera-mesh
+  labels:
+    app: cliente
+spec:
+  containers:
+    - name: curl
+      image: curlimages/curl:8.22.0
+      command: ["sleep", "infinity"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi
