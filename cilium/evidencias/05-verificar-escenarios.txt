@@ -1,9 +1,8 @@
-$ scripts/verificar.sh
-Gateway: gateway-lab/gateway  Dirección: 10.96.150.20  HTTP: 80  HTTPS: 443
+Gateway: gateway-lab/gateway  Dirección: 10.104.93.41  HTTP: 80  HTTPS: 443
 
 PASS  E01  Enrutamiento por hostname y path
 PASS  E02  Matching por header x-version
-PASS  E03  Pesos 80/20 (19/100 hacia v2)
+PASS  E03  Pesos 80/20 (17/100 hacia v2)
 PASS  E04  Modificación de headers de petición y respuesta
 PASS  E05  Rewrite /api/<ruta> hacia /<ruta>
 PASS  E06  Redirección HTTP a HTTPS (301)

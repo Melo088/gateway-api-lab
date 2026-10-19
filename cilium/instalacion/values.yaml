@@ -7,9 +7,6 @@ kubeProxyReplacement: true
 # 2. Habilitación del controlador nativo de Gateway API en Cilium
 gatewayAPI:
   enabled: true
-  # Expone los secrets TLS en todos los namespaces si es necesario
-  secretsNamespace:
-    create: false
 
 # 3. Optimización de enrutamiento y proxy Envoy L7
 bpf:

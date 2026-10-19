@@ -49,8 +49,32 @@ echo "Conexión a Kubernetes confirmada."
 
 echo
 echo "============================================================"
-echo " 3. Instalando Cilium v${CILIUM_VERSION} con Gateway API y eBPF"
+echo " 3. Asegurando CRDs de Gateway API y compatibilidad v1alpha2"
 echo "============================================================"
+if ! kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then
+  echo "Instalando CRDs oficiales de Gateway API v1.6.2 (Standard)..."
+  kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
+fi
+
+# Cilium 1.16 reconcilia TLSRoute requiriendo el endpoint v1alpha2.
+# En Gateway API v1.6+, v1alpha2 viene desactivado por defecto (served=false).
+# Lo activamos para que el reconciliador de cilium-operator inicie limpiamente:
+if kubectl get crd tlsroutes.gateway.networking.k8s.io >/dev/null 2>&1; then
+  echo "Habilitando compatibilidad con TLSRoute v1alpha2 para el operador de Cilium..."
+  kubectl patch crd tlsroutes.gateway.networking.k8s.io --type=json -p '[{"op": "replace", "path": "/spec/versions/1/served", "value": true}]' 2>/dev/null || true
+fi
+
+echo
+echo "============================================================"
+echo " 4. Instalando Cilium v${CILIUM_VERSION} con Gateway API y eBPF"
+echo "============================================================"
+
+# Si existe una instalación previa en estado fallido, desinstalamos limpiamente:
+if cilium status 2>&1 | grep -qi "error"; then
+  echo "Detectada instalación previa con errores. Limpiando antes de reinstalar..."
+  cilium uninstall >/dev/null 2>&1 || true
+fi
+
 if [ -f "$VALUES_FILE" ]; then
   echo "Aplicando configuración declarativa desde: ${VALUES_FILE}"
   cilium install \
@@ -68,15 +92,24 @@ fi
 
 echo
 echo "============================================================"
-echo " 4. Estado de los componentes de Cilium"
+echo " 5. Estado de los componentes de Cilium"
 echo "============================================================"
 cilium status --wait
 
 echo
 echo "============================================================"
-echo " 5. Verificando GatewayClass cilium"
+echo " 6. Verificando GatewayClass cilium"
 echo "============================================================"
 kubectl get gatewayclass cilium -o wide || true
+
+# Si ya existían pods en gateway-lab antes de instalar Cilium, los reiniciamos
+# para que obtengan conectividad administrada por el CNI:
+if kubectl get ns gateway-lab >/dev/null 2>&1; then
+  if kubectl -n gateway-lab get deployment httpbin-v1 >/dev/null 2>&1; then
+    echo "Reiniciando pods de httpbin para vincularlos al nuevo CNI Cilium..."
+    kubectl -n gateway-lab rollout restart deployment httpbin-v1 httpbin-v2 >/dev/null 2>&1 || true
+  fi
+fi
 
 echo
 echo "Cilium ha sido instalado exitosamente con soporte para Gateway API."

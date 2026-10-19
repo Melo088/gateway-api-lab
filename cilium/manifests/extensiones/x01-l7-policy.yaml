@@ -16,9 +16,10 @@ spec:
       app: httpbin
       version: v1
   ingress:
-    - fromEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: gateway-lab
+    - fromEntities:
+        - ingress
+        - cluster
+        - host
       toPorts:
         - ports:
             - port: "8080"
