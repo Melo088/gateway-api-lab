@@ -14,4 +14,4 @@ patches:
       - op: add
         path: /metadata/annotations
         value:
-          konghq.com/publish-service: kong/kong-gateway-kong-proxy
+          konghq.com/publish-service: kong/kong-proxy

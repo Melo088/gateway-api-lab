@@ -1,330 +1,160 @@
+# Pod con dos contenedores:
+#   ingress-controller (KIC): plano de control. Traduce Gateway API a
+#     configuración de Kong y la envía a la Admin API local (localhost:8444).
+#   proxy (Kong Gateway): plano de datos en modo DB-less (configuración en memoria).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  labels:
-    app.kubernetes.io/component: app
-    app.kubernetes.io/instance: kong-gateway
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: kong
-    app.kubernetes.io/version: '3.8.0'
-    helm.sh/chart: kong-3.4.1
-  name: kong-gateway-kong
+  name: kong
   namespace: kong
+  labels:
+    app.kubernetes.io/name: kong
 spec:
   replicas: 1
-  revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app.kubernetes.io/component: app
-      app.kubernetes.io/instance: kong-gateway
       app.kubernetes.io/name: kong
   template:
     metadata:
-      annotations:
-        kuma.io/gateway: enabled
-        kuma.io/service-account-token-volume: kong-gateway-kong-token
-        traffic.sidecar.istio.io/includeInboundPorts: ''
       labels:
-        app: kong-gateway-kong
-        app.kubernetes.io/component: app
-        app.kubernetes.io/instance: kong-gateway
-        app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: kong
-        app.kubernetes.io/version: '3.8.0'
-        helm.sh/chart: kong-3.4.1
-        version: '3.8.0'
     spec:
-      automountServiceAccountToken: false
+      serviceAccountName: kong
+      initContainers:
+      # Borra el PID de un arranque anterior para que Kong pueda reiniciar.
+      - name: clear-stale-pid
+        image: kong:3.8.0
+        command: [rm, -vrf, /kong_prefix/pids]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: prefix
+          mountPath: /kong_prefix/
       containers:
-      - args: null
+      - name: ingress-controller
+        image: kong/kubernetes-ingress-controller:3.5.0
         env:
         - name: POD_NAME
           valueFrom:
             fieldRef:
-              apiVersion: v1
               fieldPath: metadata.name
         - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
-              apiVersion: v1
               fieldPath: metadata.namespace
-        - name: CONTROLLER_ADMISSION_WEBHOOK_LISTEN
-          value: 0.0.0.0:8080
+        # Admin API del contenedor proxy (mismo pod).
+        - name: CONTROLLER_KONG_ADMIN_URL
+          value: https://localhost:8444
+        - name: CONTROLLER_KONG_ADMIN_TLS_SKIP_VERIFY
+          value: 'true'
+        # Service cuya IP se publica en status.addresses del Gateway.
+        - name: CONTROLLER_PUBLISH_SERVICE
+          value: kong/kong-proxy
         - name: CONTROLLER_ELECTION_ID
           value: kong-ingress-controller-leader-kong
         - name: CONTROLLER_INGRESS_CLASS
           value: kong
-        - name: CONTROLLER_KONG_ADMIN_TLS_SKIP_VERIFY
-          value: 'true'
-        - name: CONTROLLER_KONG_ADMIN_URL
-          value: https://localhost:8444
-        - name: CONTROLLER_PUBLISH_SERVICE
-          value: kong/kong-gateway-kong-proxy
-        image: kong/kubernetes-ingress-controller:3.5.0
-        imagePullPolicy: IfNotPresent
-        livenessProbe:
-          failureThreshold: 3
-          httpGet:
-            path: /healthz
-            port: 10254
-            scheme: HTTP
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 5
-        name: ingress-controller
         ports:
-        - containerPort: 8080
-          name: webhook
-          protocol: TCP
-        - containerPort: 10255
-          name: cmetrics
-          protocol: TCP
-        - containerPort: 10254
-          name: cstatus
-          protocol: TCP
+        - name: cstatus
+          containerPort: 10254
         readinessProbe:
-          failureThreshold: 3
           httpGet:
             path: /readyz
-            port: 10254
-            scheme: HTTP
+            port: cstatus
           initialDelaySeconds: 5
           periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 5
-        resources: {}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: cstatus
+          initialDelaySeconds: 5
+          periodSeconds: 10
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
-            drop:
-            - ALL
+            drop: [ALL]
           readOnlyRootFilesystem: true
-          runAsGroup: 1000
-          runAsNonRoot: true
-          runAsUser: 1000
-          seccompProfile:
-            type: RuntimeDefault
-        volumeMounts:
-        - mountPath: /admission-webhook
-          name: webhook-cert
-          readOnly: true
-        - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-          name: kong-gateway-kong-token
-          readOnly: true
-      - env:
-        - name: KONG_ADMIN_ACCESS_LOG
-          value: /dev/stdout
-        - name: KONG_ADMIN_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_ADMIN_GUI_ACCESS_LOG
-          value: /dev/stdout
-        - name: KONG_ADMIN_GUI_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_ADMIN_LISTEN
-          value: 127.0.0.1:8444 http2 ssl, [::1]:8444 http2 ssl
-        - name: KONG_CLUSTER_LISTEN
-          value: 'off'
+      - name: proxy
+        image: kong:3.8.0
+        env:
         - name: KONG_DATABASE
           value: 'off'
-        - name: KONG_KIC
-          value: 'on'
-        - name: KONG_LUA_PACKAGE_PATH
-          value: /opt/?.lua;/opt/?/init.lua;;
-        - name: KONG_NGINX_WORKER_PROCESSES
-          value: '2'
-        - name: KONG_PORTAL_API_ACCESS_LOG
-          value: /dev/stdout
-        - name: KONG_PORTAL_API_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_PORT_MAPS
-          value: 80:8000, 443:8443
         - name: KONG_PREFIX
           value: /kong_prefix/
+        # Proxy HTTP en 8000 y HTTPS en 8443; el Service los expone como 80/443.
+        - name: KONG_PROXY_LISTEN
+          value: 0.0.0.0:8000, 0.0.0.0:8443 http2 ssl
+        - name: KONG_PORT_MAPS
+          value: 80:8000, 443:8443
+        # Admin API solo en localhost: únicamente KIC la usa.
+        - name: KONG_ADMIN_LISTEN
+          value: 127.0.0.1:8444 http2 ssl
+        - name: KONG_STATUS_LISTEN
+          value: 0.0.0.0:8100
+        - name: KONG_STREAM_LISTEN
+          value: 'off'
+        - name: KONG_CLUSTER_LISTEN
+          value: 'off'
+        - name: KONG_ROUTER_FLAVOR
+          value: traditional
+        - name: KONG_NGINX_WORKER_PROCESSES
+          value: '2'
         - name: KONG_PROXY_ACCESS_LOG
           value: /dev/stdout
         - name: KONG_PROXY_ERROR_LOG
           value: /dev/stderr
-        - name: KONG_PROXY_LISTEN
-          value: 0.0.0.0:8000, [::]:8000, 0.0.0.0:8443 http2 ssl, [::]:8443 http2
-            ssl
-        - name: KONG_PROXY_STREAM_ACCESS_LOG
-          value: /dev/stdout basic
-        - name: KONG_PROXY_STREAM_ERROR_LOG
+        - name: KONG_ADMIN_ACCESS_LOG
+          value: /dev/stdout
+        - name: KONG_ADMIN_ERROR_LOG
           value: /dev/stderr
-        - name: KONG_ROUTER_FLAVOR
-          value: traditional
-        - name: KONG_STATUS_ACCESS_LOG
-          value: 'off'
         - name: KONG_STATUS_ERROR_LOG
           value: /dev/stderr
-        - name: KONG_STATUS_LISTEN
-          value: 0.0.0.0:8100, [::]:8100
-        - name: KONG_STREAM_LISTEN
-          value: 'off'
-        - name: KONG_NGINX_DAEMON
-          value: 'off'
-        image: kong:3.8.0
-        imagePullPolicy: IfNotPresent
-        lifecycle:
-          preStop:
-            exec:
-              command:
-              - kong
-              - quit
-              - --wait=15
-        livenessProbe:
-          failureThreshold: 3
-          httpGet:
-            path: /status
-            port: status
-            scheme: HTTP
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 5
-        name: proxy
         ports:
-        - containerPort: 8000
-          name: proxy
-          protocol: TCP
-        - containerPort: 8443
-          name: proxy-tls
-          protocol: TCP
-        - containerPort: 8100
-          name: status
-          protocol: TCP
+        - name: proxy
+          containerPort: 8000
+        - name: proxy-tls
+          containerPort: 8443
+        - name: status
+          containerPort: 8100
         readinessProbe:
-          failureThreshold: 3
           httpGet:
             path: /status/ready
             port: status
-            scheme: HTTP
           initialDelaySeconds: 5
           periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 5
-        resources: {}
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: status
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        lifecycle:
+          preStop:
+            exec:
+              command: [kong, quit, --wait=15]
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
-            drop:
-            - ALL
+            drop: [ALL]
           readOnlyRootFilesystem: true
-          runAsGroup: 1000
-          runAsNonRoot: true
-          runAsUser: 1000
-          seccompProfile:
-            type: RuntimeDefault
         volumeMounts:
-        - mountPath: /kong_prefix/
-          name: kong-gateway-kong-prefix-dir
-        - mountPath: /tmp
-          name: kong-gateway-kong-tmp
-      initContainers:
-      - command:
-        - rm
-        - -vrf
-        - $(KONG_PREFIX)/pids
-        env:
-        - name: KONG_ADMIN_ACCESS_LOG
-          value: /dev/stdout
-        - name: KONG_ADMIN_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_ADMIN_GUI_ACCESS_LOG
-          value: /dev/stdout
-        - name: KONG_ADMIN_GUI_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_ADMIN_LISTEN
-          value: 127.0.0.1:8444 http2 ssl, [::1]:8444 http2 ssl
-        - name: KONG_CLUSTER_LISTEN
-          value: 'off'
-        - name: KONG_DATABASE
-          value: 'off'
-        - name: KONG_KIC
-          value: 'on'
-        - name: KONG_LUA_PACKAGE_PATH
-          value: /opt/?.lua;/opt/?/init.lua;;
-        - name: KONG_NGINX_WORKER_PROCESSES
-          value: '2'
-        - name: KONG_PORTAL_API_ACCESS_LOG
-          value: /dev/stdout
-        - name: KONG_PORTAL_API_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_PORT_MAPS
-          value: 80:8000, 443:8443
-        - name: KONG_PREFIX
-          value: /kong_prefix/
-        - name: KONG_PROXY_ACCESS_LOG
-          value: /dev/stdout
-        - name: KONG_PROXY_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_PROXY_LISTEN
-          value: 0.0.0.0:8000, [::]:8000, 0.0.0.0:8443 http2 ssl, [::]:8443 http2
-            ssl
-        - name: KONG_PROXY_STREAM_ACCESS_LOG
-          value: /dev/stdout basic
-        - name: KONG_PROXY_STREAM_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_ROUTER_FLAVOR
-          value: traditional
-        - name: KONG_STATUS_ACCESS_LOG
-          value: 'off'
-        - name: KONG_STATUS_ERROR_LOG
-          value: /dev/stderr
-        - name: KONG_STATUS_LISTEN
-          value: 0.0.0.0:8100, [::]:8100
-        - name: KONG_STREAM_LISTEN
-          value: 'off'
-        image: kong:3.8.0
-        imagePullPolicy: IfNotPresent
-        name: clear-stale-pid
-        resources: {}
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: true
-          runAsGroup: 1000
-          runAsNonRoot: true
-          runAsUser: 1000
-          seccompProfile:
-            type: RuntimeDefault
-        volumeMounts:
-        - mountPath: /kong_prefix/
-          name: kong-gateway-kong-prefix-dir
-        - mountPath: /tmp
-          name: kong-gateway-kong-tmp
+        - name: prefix
+          mountPath: /kong_prefix/
+        - name: tmp
+          mountPath: /tmp
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: kong-gateway-kong
-      terminationGracePeriodSeconds: 30
       volumes:
-      - emptyDir:
+      - name: prefix
+        emptyDir:
           sizeLimit: 256Mi
-        name: kong-gateway-kong-prefix-dir
-      - emptyDir:
+      - name: tmp
+        emptyDir:
           sizeLimit: 1Gi
-        name: kong-gateway-kong-tmp
-      - name: kong-gateway-kong-token
-        projected:
-          sources:
-          - serviceAccountToken:
-              expirationSeconds: 3607
-              path: token
-          - configMap:
-              items:
-              - key: ca.crt
-                path: ca.crt
-              name: kube-root-ca.crt
-          - downwardAPI:
-              items:
-              - fieldRef:
-                  apiVersion: v1
-                  fieldPath: metadata.namespace
-                path: namespace
-      - name: webhook-cert
-        secret:
-          secretName: kong-gateway-kong-validation-webhook-keypair

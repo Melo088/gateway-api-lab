@@ -1,6 +1,7 @@
+# Instalación manual de Kong Gateway 3.8.0 + Kong Ingress Controller 3.5.0 (DB-less).
+#   kubectl apply --server-side=true -f kong/instalacion/
+# Los archivos se aplican en orden alfabético: el namespace va primero.
 apiVersion: v1
 kind: Namespace
 metadata:
-  labels:
-    app.kubernetes.io/name: kong
   name: kong

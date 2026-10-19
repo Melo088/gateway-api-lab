@@ -42,7 +42,7 @@ graph TD
     end
 
     subgraph K8sDataPlane["Plano de Datos (Kong Data Plane)"]
-        SVC_PROXY["Service: kong-gateway-kong-proxy\nLoadBalancer (IP asignada por tunnel)"]
+        SVC_PROXY["Service: kong-proxy\nLoadBalancer (IP asignada por tunnel)"]
         PROXY["Kong Proxy Engine (Container)\nPuertos internos: 8000 / 8443"]
         SVC_V1["Service httpbin-v1 (:8080)"]
         SVC_V2["Service httpbin-v2 (:8080)"]
@@ -58,7 +58,7 @@ graph TD
 
 ## 3. Requisitos
 
-- **Minikube:** $\ge v1.31.0$ (probado en `v1.39.0` con K8s `v1.37.0` y driver `docker`).
+- **Minikube:** $\ge v1.31.0$ (probado en `v1.39.0` con K8s `v1.37.0` y driver `docker`; instalación manual verificada en un clúster limpio con `v1.38.1` y K8s `v1.35.1`).
 - **Herramientas cliente:** `kubectl` ($\ge v1.31.0$), `curl`, `openssl`.
 - **CRDs de Gateway API:** Canal Standard `v1.6.2` aplicado con `--server-side=true`.
 
@@ -78,15 +78,17 @@ kubectl apply -f kong/instalacion/
 
 # 4. Verificar que el Pod de Kong esté operativo (2/2 Running) y el Service expuesto:
 kubectl -n kong get pods -l app.kubernetes.io/name=kong
-kubectl -n kong get svc kong-gateway-kong-proxy
+kubectl -n kong get svc kong-proxy
 ```
 
 Los manifiestos en [`kong/instalacion/`](instalacion/) se estructuran de forma modular y con versiones fijas explícitas:
 - `00-namespace.yaml`: Namespace dedicado `kong`.
 - `01-crds.yaml`: Definiciones de recursos personalizados (CRDs) oficiales de Kong (`configuration.konghq.com`).
-- `02-rbac.yaml`: ServiceAccount, Roles, RoleBindings, ClusterRoles y ClusterRoleBindings con permisos de conciliación para Gateway API.
-- `03-service.yaml`: Service tipo `LoadBalancer` (`kong-gateway-kong-proxy`) exponiendo los puertos 80 (HTTP) y 443 (HTTPS).
-- `04-deployment.yaml`: Deployment con el proxy Kong (`kong:3.8.0`) en modo DB-less y el controlador KIC (`kong/kubernetes-ingress-controller:3.5.0`) en arquitectura sidecar.
+- `02-rbac.yaml`: ServiceAccount `kong`, ClusterRole/ClusterRoleBinding (lectura de Services, EndpointSlices, Secrets, CRDs de Kong y Gateway API; escritura de `status`) y Role/RoleBinding para la elección de líder (`leases`) y eventos.
+- `03-service.yaml`: Service tipo `LoadBalancer` (`kong-proxy`) exponiendo los puertos 80 (HTTP) y 443 (HTTPS) hacia 8000/8443. El `targetPort` debe ser numérico: KIC lo compara con los puertos de `KONG_PROXY_LISTEN` para aceptar los listeners del Gateway.
+- `04-deployment.yaml`: Deployment con el proxy Kong (`kong:3.8.0`) en modo DB-less y el controlador KIC (`kong/kubernetes-ingress-controller:3.5.0`) en el mismo pod. KIC envía la configuración a la Admin API del proxy por `https://localhost:8444`. Sin webhook de admisión.
+
+Evidencia de la instalación en clúster limpio: [`evidencias/instalacion-manual.txt`](evidencias/instalacion-manual.txt).
 
 ## 5. GatewayClass y Gateway
 
@@ -126,7 +128,7 @@ patches:
       - op: add
         path: /metadata/annotations
         value:
-          konghq.com/publish-service: kong/kong-gateway-kong-proxy
+          konghq.com/publish-service: kong/kong-proxy
 ```
 
 Al aplicarse, el Gateway en `gateway-lab` adopta la IP externa asignada por `minikube tunnel` (`10.108.244.77`), alcanzando `PROGRAMMED: True`.
@@ -135,15 +137,17 @@ Al aplicarse, el Gateway en `gateway-lab` adopta la IP externa asignada por `min
 
 Resultado de la ejecución de [`scripts/verificar.sh`](../scripts/verificar.sh):
 
+Ejecución con `kubectl -n kong port-forward svc/kong-proxy 18080:80 18443:443`:
+
 ```text
-Gateway: gateway-lab/gateway  Dirección: 10.108.244.77  HTTP: 80  HTTPS: 443
+Gateway: gateway-lab/gateway  Dirección: 127.0.0.1  HTTP: 18080  HTTPS: 18443
 
 PASS  E01  Enrutamiento por hostname y path
 PASS  E02  Matching por header x-version
-PASS  E03  Pesos 80/20 (20/100 hacia v2)
+PASS  E03  Pesos 80/20 (21/100 hacia v2)
 PASS  E04  Modificación de headers de petición y respuesta
 PASS  E05  Rewrite /api/<ruta> hacia /<ruta>
-FAIL  E06  Redirección HTTP a HTTPS (301): status=426
+FAIL  E06  Redirección HTTP a HTTPS (301): status=200
 PASS  E07  Terminación TLS
 
 Fallos: 1/7
@@ -153,51 +157,32 @@ Fallos: 1/7
 | --- | --- | --- |
 | E01 | PASS | Enrutamiento L7 por prefijo `/get` hacia `httpbin-v1` (HTTP 200 OK). |
 | E02 | PASS | Coincidencia condicional de cabecera `x-version: v2` deriva a `httpbin-v2`; sin header deriva a `httpbin-v1`. |
-| E03 | PASS | Distribución ponderada 80/20 comprobada en 100 peticiones consecutivas (20% hacia v2). |
+| E03 | PASS | Distribución ponderada 80/20 comprobada en 100 peticiones consecutivas (≈20% hacia v2). |
 | E04 | PASS | Filtros tipados `RequestHeaderModifier` y `ResponseHeaderModifier` inyectan `x-gateway-lab` correctamente. |
 | E05 | PASS | Filtro `URLRewrite` (Extended) reescribe `/api/<ruta>` hacia `/<ruta>` de forma transparente. |
-| E06 | FAIL | Kong intercepta la petición HTTP con código `426 Upgrade Required` (`Please use HTTPS protocol`) debido a la regla de enforcement HTTPS en el host compartido `redirect.lab.local` antes de evaluar el filtro `RequestRedirect` (análisis en sección 7). |
+| E06 | FAIL | La petición HTTP a `redirect.lab.local` la atiende la ruta de E07 (200), porque KIC no separa rutas por listener. La ruta de E06 tampoco cumpliría: emite `Location: /` fijo (análisis en sección 7). |
 | E07 | PASS | Terminación TLS en puerto 443 con certificado Secret `gateway-tls` (*.lab.local) y paso en claro hacia el backend. |
 
 ## 7. Comportamiento específico
 
-### Causa Raíz del Fallo en Escenario E06 (`status=426`)
+### Fallo del escenario E06
 
-En la especificación estándar de Kubernetes Gateway API, el filtro `RequestRedirect` con `scheme: https` y `statusCode: 301` exige redirigir solicitudes en texto plano hacia HTTPS preservando el host y la ruta:
-$$\text{GET } \text{http://redirect.lab.local/get} \implies 301 \text{ Moved Permanently} \quad [\text{Location: } \text{https://redirect.lab.local/get}]$$
+Gateway API exige que `RequestRedirect` con `scheme: https` preserve host y ruta:
+`GET http://redirect.lab.local/get` → `301` con `Location: https://redirect.lab.local/get`.
 
-Sin embargo, al ejecutar la prueba de verificación, la evidencia registrada en [`evidencias/salida-verificar.txt`](evidencias/salida-verificar.txt) arroja un fallo por código de estado:
+Rutas que KIC genera en Kong (Admin API, [`evidencias/e06-rutas-kong.txt`](evidencias/e06-rutas-kong.txt)):
+
 ```text
-FAIL  E06  Redirección HTTP a HTTPS (301): status=426
+ROUTE  httproute.gateway-lab.e07-tls.0.0       hosts=[tls.lab.local, redirect.lab.local]  protocols=[http, https]  paths=[~/$, /]
+ROUTE  httproute.gateway-lab.e06-redirect.0.0  hosts=[redirect.lab.local]                 protocols=[http, https]  paths=[~/$, /]
+PLUGIN request-termination   (e06-redirect)  status_code=301
+PLUGIN response-transformer  (e06-redirect)  add.headers=[Location:/]
 ```
 
-#### Análisis de la Interceptación L4/L7 en Kong
+1. **Sin aislamiento por listener.** `e06-redirect` usa `sectionName: http` y `e07-tls` usa `sectionName: https`, pero KIC crea ambas rutas con `protocols: [http, https]`, el mismo host y el mismo path. Kong elige una de ellas para la petición HTTP; en la ejecución anterior respondió la ruta de E07, con `200` desde el backend.
+2. **Traducción incompleta del filtro.** Aunque la ruta de E06 atendiera la petición, KIC traduce `RequestRedirect` a `request-termination` (301) más `response-transformer` con la cabecera fija `Location: /`, sin esquema `https` ni host. El cliente sería redirigido a `/` en HTTP.
 
-La emisión del código HTTP `426 Upgrade Required` responde a la arquitectura interna del motor de enrutamiento de Kong:
-
-1. **Configuración de Host Compartido:** 
-   - El escenario [`comun/escenarios/06-redirect.yaml`](../comun/escenarios/06-redirect.yaml) (`e06-redirect`) vincula `redirect.lab.local` al listener HTTP (puerto 80).
-   - Simultáneamente, el escenario [`comun/escenarios/07-tls.yaml`](../comun/escenarios/07-tls.yaml) (`e07-tls`) vincula el mismo hostname `redirect.lab.local` al listener HTTPS (puerto 443).
-2. **Mecanismo de Enforcement HTTPS:**
-   Kong Gateway opera como un proxy unificado multi-puerto (8000 HTTP y 8443 HTTPS). A nivel de núcleo, cada ruta en Kong cuenta con la directiva `https_redirect_status_code`, cuyo valor predeterminado por diseño es **`426`** (conforme a RFC 7231 §6.5.15 y RFC 2817 para actualización de protocolo a TLS).
-3. **Punto de Interceptación en el Pipeline:**
-   Cuando la solicitud en claro `GET http://redirect.lab.local/get` ingresa por el puerto 80, el enrutador de Kong identifica que el host destino está asociado a una política de transporte seguro (HTTPS). En lugar de derivar el flujo a la cadena de plugins y filtros de Gateway API, el guardián de protocolo nativo de Kong corta la conexión y emite la respuesta:
-   ```http
-   HTTP/1.1 426 Upgrade Required
-   Upgrade: TLS/1.2, HTTP/1.1
-   Connection: Upgrade
-   Content-Type: application/json; charset=utf-8
-
-   {"message":"Please use HTTPS protocol"}
-   ```
-
-#### Distinción Técnica con el Issue Upstream #6557
-
-Existe un problema conocido en KIC catalogado como **Issue #6557** (*Gateway API: RequestRedirect filter path preservation*), el cual describe cómo KIC traduce el filtro declarativo mediante la combinación sintética de plugins `request-termination` y `response-transformer`, emitiendo una cabecera estática `Location: /` al carecer de interpolación dinámica de la URI entrante. 
-
-Es fundamental diferenciar ambos fenómenos:
-- En este laboratorio, **la petición nunca llega a ejecutar el filtro `RequestRedirect` ni los plugins de transformación**.
-- La petición es interceptada y rechazada aguas arriba por el guardián de protocolo del núcleo de Kong con `426 Upgrade Required` debido a la presencia concurrente del hostname en el listener HTTPS.
+Una ejecución previa del equipo registró `status=426` (`https_redirect_status_code` de Kong, que se aplica cuando una ruta solo admite `https`). Con la instalación de `instalacion/` las rutas admiten ambos protocolos y el 426 no se reproduce; el fallo de fondo es el mismo.
 
 #### Alternativa Nativa en Kong
 
@@ -274,7 +259,8 @@ La sexta petición es bloqueada en el borde con código `429 Too Many Requests` 
 | `K8S_DOWNGRADE_UNSUPPORTED` al iniciar Minikube | Intento de iniciar Minikube forzando una versión inferior sobre un almacén `etcd` existente. | Iniciar Minikube con un perfil dedicado (`-p gateway-lab`) sin degradar la versión del cluster existente. |
 | `Gateway sin dirección en status.addresses` | En Minikube, los servicios `LoadBalancer` quedan en `<pending>` si no hay un túnel de red activo en el host. | Ejecutar `minikube tunnel -p gateway-lab` en una terminal dedicada con privilegios de root. |
 | Error `value must be null` en entidad `certificate` | Kong Gateway $\ge 3.9$ aplica validaciones estrictas de esquema que rechazan campos omitidos en la traducción de secretos TLS de KIC. | Fijar la versión exacta de Kong en `kong:3.8.0` y KIC en `3.5.0` en `kong/instalacion/04-deployment.yaml`. |
-| `Gateway` en estado `Programmed: False` | Ausencia de enlace entre el objeto Gateway y el Service físico del proxy en modo no gestionado. | Inyectar la anotación `konghq.com/publish-service: kong/kong-gateway-kong-proxy` mediante el parche de Kustomize. |
+| Listeners con `UnsupportedProtocol: no Kong listen with the requested protocol is configured` | El Service `kong-proxy` usa `targetPort` con nombre (`proxy`); KIC necesita el número para emparejarlo con `KONG_PROXY_LISTEN`. | Usar `targetPort: 8000` y `8443` en `03-service.yaml` y reiniciar el Deployment `kong`. |
+| `Gateway` en estado `Programmed: False` | Ausencia de enlace entre el objeto Gateway y el Service físico del proxy en modo no gestionado. | Inyectar la anotación `konghq.com/publish-service: kong/kong-proxy` mediante el parche de Kustomize. |
 
 ## 10. Limpieza
 
@@ -296,7 +282,7 @@ kubectl delete -f kong/instalacion/
   - Soporte robusto de funcionalidades Extended como `URLRewrite` en Capa 7.
 - **Limitaciones:**
   - El modo no gestionado (`gatewayclass-unmanaged`) requiere aprovisionar el plano de datos y el controlador mediante manifiestos declarativos manuales y asociarlo al Gateway mediante anotaciones de servicio de publicación.
-  - La coexistencia de hostnames idénticos en listeners HTTP y HTTPS activa el guardián de protocolo nativo de Kong (código `426 Upgrade Required`) antes de la ejecución de filtros `RequestRedirect`, requiriendo anotaciones nativas de Kong (`konghq.com/protocols`) para redirecciones 301 limpias.
+  - KIC no aísla rutas por listener (`sectionName`): rutas con el mismo host en los listeners HTTP y HTTPS se crean con `protocols: [http, https]` y compiten entre sí. Además, `RequestRedirect` se traduce con `Location: /` fijo, por lo que la redirección a HTTPS requiere anotaciones nativas de Kong (`konghq.com/protocols`).
 - **Nivel de Conformidad:** Alto cumplimiento en Core (E01, E02, E03, E04, E07) y Extended (E05).
 - **Casos de Uso Adecuados:** Entornos empresariales que demandan gestión centralizada de APIs, control de cuotas/rate limiting por consumidor y políticas de seguridad avanzadas en el borde.
 
