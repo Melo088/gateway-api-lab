@@ -1,0 +1,7 @@
+# Instalación manual de Traefik v3.7.14 como controlador de Gateway API.
+#   kubectl apply -f traefik/instalacion/
+# Los archivos se aplican en orden alfabético: el namespace va primero.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik

@@ -8,7 +8,6 @@ validación CEL de `TLSRoute` en Gateway API v1.5+).
 | Herramienta | Verificación |
 |---|---|
 | `kubectl` | `kubectl version --client` |
-| `helm` | `helm version` |
 | Runtime de contenedores (clúster local) | `docker version` o `podman version` |
 | Herramienta de clúster | `minikube`, `kind`, `k3d` o clúster gestionado |
 

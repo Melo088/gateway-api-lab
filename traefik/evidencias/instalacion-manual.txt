@@ -1,0 +1,51 @@
+$ kubectl apply -f traefik/instalacion/
+namespace/traefik created
+serviceaccount/traefik created
+clusterrole.rbac.authorization.k8s.io/traefik created
+clusterrolebinding.rbac.authorization.k8s.io/traefik created
+deployment.apps/traefik created
+service/traefik created
+
+$ kubectl version
+Server Version: v1.35.1
+
+$ kubectl -n traefik get deploy,pods,svc -o wide
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE     CONTAINERS   IMAGES                      SELECTOR
+deployment.apps/traefik   1/1     1            1           2m53s   traefik      docker.io/traefik:v3.7.14   app.kubernetes.io/name=traefik
+
+NAME                           READY   STATUS    RESTARTS   AGE   IP            NODE          NOMINATED NODE   READINESS GATES
+pod/traefik-5446bb74c4-4znsc   1/1     Running   0          24s   10.244.0.10   traefik-lab   <none>           <none>
+
+NAME              TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)                      AGE   SELECTOR
+service/traefik   LoadBalancer   10.108.235.118   <pending>     80:31786/TCP,443:30769/TCP   10m   app.kubernetes.io/name=traefik
+
+$ kubectl get gatewayclass
+NAME      CONTROLLER                      ACCEPTED   AGE
+traefik   traefik.io/gateway-controller   True       10m
+
+$ kubectl -n gateway-lab get gateway,httproute
+NAME                                        CLASS     ADDRESS   PROGRAMMED   AGE
+gateway.gateway.networking.k8s.io/gateway   traefik             True         10m
+
+NAME                                                        HOSTNAMES                                AGE
+httproute.gateway.networking.k8s.io/e01-enrutamiento        ["enrutamiento.lab.local"]               10m
+httproute.gateway.networking.k8s.io/e02-match-header        ["match.lab.local"]                      10m
+httproute.gateway.networking.k8s.io/e03-pesos               ["pesos.lab.local"]                      10m
+httproute.gateway.networking.k8s.io/e04-modificar-headers   ["headers.lab.local"]                    10m
+httproute.gateway.networking.k8s.io/e05-rewrite             ["rewrite.lab.local"]                    10m
+httproute.gateway.networking.k8s.io/e06-redirect            ["redirect.lab.local"]                   10m
+httproute.gateway.networking.k8s.io/e07-tls                 ["tls.lab.local","redirect.lab.local"]   10m
+
+$ kubectl -n traefik port-forward svc/traefik 18080:80 18443:443
+$ GATEWAY_ADDRESS=127.0.0.1 HTTP_PORT=18080 HTTPS_PORT=18443 scripts/verificar.sh
+Gateway: gateway-lab/gateway  Dirección: 127.0.0.1  HTTP: 18080  HTTPS: 18443
+
+PASS  E01  Enrutamiento por hostname y path
+PASS  E02  Matching por header x-version
+PASS  E03  Pesos 80/20 (20/100 hacia v2)
+PASS  E04  Modificación de headers de petición y respuesta
+PASS  E05  Rewrite /api/<ruta> hacia /<ruta>
+PASS  E06  Redirección HTTP a HTTPS (301)
+PASS  E07  Terminación TLS
+
+Fallos: 0/7

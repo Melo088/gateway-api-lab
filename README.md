@@ -65,7 +65,7 @@ Cada carpeta de implementación contiene:
 ```text
 <implementacion>/
 ├── README.md          Documentación según plantillas/PLANTILLA-implementacion.md
-├── instalacion/       Values de Helm, perfiles u otros archivos de instalación del controlador
+├── instalacion/       Manifiestos o configuración del instalador propio del controlador (sin Helm)
 ├── manifests/         Overlay kustomize sobre comun/ y recursos propios del controlador
 └── evidencias/        Capturas, salidas de comandos y diagramas
 ```
