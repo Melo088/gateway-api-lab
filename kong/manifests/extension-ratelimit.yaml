@@ -1,0 +1,36 @@
+# Extension propia de Kong: Rate Limiting aplicado mediante ExtensionRef en Gateway API
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit-test
+  namespace: gateway-lab
+config:
+  minute: 5
+  policy: local
+plugin: rate-limiting
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: e08-extension-ratelimit
+  namespace: gateway-lab
+spec:
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - ratelimit.lab.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: configuration.konghq.com
+            kind: KongPlugin
+            name: rate-limit-test
+      backendRefs:
+        - name: httpbin-v1
+          port: 8080
