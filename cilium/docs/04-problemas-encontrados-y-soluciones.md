@@ -27,7 +27,7 @@ Esta guía documenta los problemas, advertencias y comportamientos anómalos enc
 * **Síntoma**: Al ejecutar `kubectl -n gateway-lab get gateway gateway`, la columna `PROGRAMMED` muestra `False` y la columna `ADDRESSES` está vacía.
 * **Causa Raíz**: En Minikube con driver Docker, Kubernetes no cuenta con un proveedor de nube que asigne IP pública automáticamente.
 * **Solución**:
-  1. En una terminal separada, ejecutar `minikube tunnel`.
+  1. En una terminal separada, se debe ejecutar `minikube tunnel`.
   2. Alternativa con port-forward:
      ```bash
      kubectl -n gateway-lab port-forward svc/cilium-gateway-gateway 8080:80 8443:443 &

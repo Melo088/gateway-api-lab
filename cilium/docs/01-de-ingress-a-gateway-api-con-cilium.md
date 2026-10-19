@@ -2,7 +2,7 @@
 
 ## 1. El Declive y Obsolescencia de `Ingress`
 
-Durante casi una década, el recurso `Ingress` (`networking.k8s.io/v1`) fue el estándar de facto para exponer servicios HTTP y HTTPS fuera de los clústeres de Kubernetes. Sin embargo, la arquitectura original de Ingress fue concebida en los inicios de Kubernetes y adolece de problemas estructurales que hoy son cuellos de botella críticos:
+El recurso `Ingress` (`networking.k8s.io/v1`) fue el estándar de establecido para exponer servicios HTTP y HTTPS fuera de los clústeres de Kubernetes. Sin embargo, la arquitectura original de Ingress fue concebida en los inicios de Kubernetes y adolece de problemas estructurales que hoy son cuellos de botella críticos:
 
 ### A. La Retirada Oficial de `ingress-nginx` (Marzo de 2026)
 El controlador histórico `kubernetes/ingress-nginx` anunció su fin de ciclo (*End of Life*) definitivo en marzo de 2026 debido a:

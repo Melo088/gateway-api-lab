@@ -37,7 +37,7 @@ Una de las grandes ventajas de Cilium frente a soluciones rígidas es su capacid
 
 En los controladores de entrada convencionales, la dirección IP del cliente real que realiza la petición suele perderse debido al Source NAT (SNAT) que realiza `kube-proxy` o el propio balanceador para dirigir el paquete al pod correcto. Para recuperarla, se solía recurrir a soluciones complejas o configurar `externalTrafficPolicy: Local`, lo que genera desbalanceo de tráfico entre nodos.
 
-Cilium resuelve este problema de manera transparente:
+Cilium resuelve este problema de la siguiente manera:
 
 ### A. Integración con `TPROXY` y eBPF
 * Cilium intercepta los paquetes entrantes a nivel de socket utilizando programas eBPF y sockets **TPROXY (Transparent Proxying)**.
