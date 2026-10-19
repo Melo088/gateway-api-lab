@@ -1,0 +1,6 @@
+Verificando extensión Cilium L7 en: 10.104.93.41:80
+
+PASS  X01-A  GET /get permitido por CiliumNetworkPolicy L7 (status 200)
+PASS  X01-B  POST /post bloqueado por CiliumNetworkPolicy L7 (status 403)
+
+Fallos extensión: 0/2

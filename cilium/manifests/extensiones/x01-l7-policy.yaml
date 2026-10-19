@@ -1,0 +1,36 @@
+# X01. CiliumNetworkPolicy para control de tráfico L7 impulsado por eBPF y Envoy embebido.
+# Esta política demuestra cómo Cilium aplica seguridad L7 sobre el backend httpbin-v1:
+# Permite únicamente métodos HTTP seguros (GET) en rutas específicas y bloquea
+# métodos no autorizados (como POST o DELETE) directamente en la capa de red del pod.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: l7-policy-httpbin
+  namespace: gateway-lab
+  labels:
+    app.kubernetes.io/part-of: gateway-api-lab
+    extension: cilium-l7-ebpf
+spec:
+  endpointSelector:
+    matchLabels:
+      app: httpbin
+      version: v1
+  ingress:
+    - fromEntities:
+        - ingress
+        - cluster
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+          rules:
+            http:
+              - method: GET
+                path: "/get"
+              - method: GET
+                path: "/hostname"
+              - method: GET
+                path: "/headers"
+              - method: GET
+                path: "/status/.*"
