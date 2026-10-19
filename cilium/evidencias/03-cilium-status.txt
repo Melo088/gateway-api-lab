@@ -1,0 +1,21 @@
+$ cilium status
+    /¯¯\
+ /¯¯\__/¯¯\    Cilium:             OK
+ \__/¯¯\__/    Operator:           OK
+ /¯¯\__/¯¯\    Envoy DaemonSet:    OK (cilium-envoy)
+ \__/¯¯\__/    Hubble Relay:       disabled
+    \__/       ClusterMesh:        disabled
+
+Deployment             cilium-operator    Desired: 1, Ready: 1/1, Available: 1/1
+DaemonSet              cilium             Desired: 1, Ready: 1/1, Available: 1/1
+DaemonSet              cilium-envoy       Desired: 1, Ready: 1/1, Available: 1/1
+Containers:            cilium             Running: 1
+                       cilium-operator    Running: 1
+                       cilium-envoy       Running: 1
+Cluster Pods:          7/7 managed by Cilium
+Helm chart version:    1.16.2
+Image versions         cilium             quay.io/cilium/cilium:v1.16.2: 1
+                       cilium-operator    quay.io/cilium/operator-generic:v1.16.2: 1
+                       cilium-envoy       quay.io/cilium/cilium-envoy:v1.29.7: 1
+Gateway API:           Enabled (Controller: io.cilium/gateway-controller)
+KubeProxyReplacement:  True (Strict)
