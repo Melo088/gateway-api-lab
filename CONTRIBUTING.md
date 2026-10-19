@@ -76,8 +76,12 @@ Push directo y force push a `main` están bloqueados.
 - Ajustes requeridos por el controlador (puertos de listener, GatewayClass,
   policies, CRDs del proveedor) se aplican como patches o recursos adicionales
   del overlay, documentados en el README.
-- Archivos de instalación del controlador (values de Helm, perfiles) en
-  `<implementacion>/instalacion/`, con versión del chart explícita.
+- Archivos de instalación del controlador en `<implementacion>/instalacion/`:
+  manifiestos aplicados con `kubectl apply` o configuración del instalador
+  propio del proveedor (por ejemplo `istioctl`), con versiones de imagen
+  explícitas.
+- No se usa Helm: cada recurso del controlador (CRDs, RBAC, Deployment,
+  Service) queda versionado y visible en el repositorio.
 - `kubectl apply -k <implementacion>/manifests` seguido de
   `scripts/verificar.sh` debe ejecutarse sin errores en un clúster limpio con
   el controlador instalado.
