@@ -233,24 +233,35 @@ Evidencia de la extensión: [`evidencias/06-extension-l7.txt`](evidencias/06-ext
 | Gateway en `PROGRAMMED: False` y Service en `<pending>` | Minikube no asigna IP externa sin túnel activo | Ejecutar `minikube tunnel` en una terminal dedicada o usar `port-forward` temporal. |
 | Error `no matches for kind "Gateway"` | CRDs de Gateway API no instalados | Aplicar `standard-install.yaml` v1.6.2 con `--server-side=true`. |
 | Handshake TLS falla en E07 | Secret `gateway-tls` ausente | Ejecutar `scripts/crear-certificado.sh` antes de aplicar los manifiestos. |
+| Error `namespaces "cilium-secrets" not found` | `secretsNamespace.create: false` en `values.yaml` sin namespace previo | Omitir `secretsNamespace` en `values.yaml` para usar el namespace del Gateway. |
+| Error `cannot reuse a name that is still in use` | Intento fallido previo dejó release en estado roto | Ejecutar `cilium uninstall` antes de reintentar la instalación. |
+| `cilium-operator` en CrashLoopBackOff (`no matches for TLSRoute v1alpha2`) | Gateway API v1.6.2 deshabilita `v1alpha2` de `TLSRoute` (`served: false`) | Parchar el CRD `tlsroutes` para habilitar `served: true` en `v1alpha2`. |
 | Cilium Agent en estado de error | Conflicto con `kube-proxy` | Iniciar Minikube con `--network-plugin=cni` para deshabilitar el CNI básico. |
+| Bloqueo de peticiones legítimas en extensión L7 | Política L7 desconoce la identidad `reserved:ingress` de Envoy | Utilizar `fromEntities: [ingress, cluster, host]` en `CiliumNetworkPolicy`. |
 
-Guía detallada de solución de problemas y comandos de diagnóstico profundo: [`docs/04-problemas-encontrados-y-soluciones.md`](docs/04-problemas-encontrados-y-soluciones.md).
+Guía detallada de solución de problemas con los 10 casos analizados a fondo: [`docs/04-problemas-encontrados-y-soluciones.md`](docs/04-problemas-encontrados-y-soluciones.md).
 
 ---
 
 ## 10. Limpieza
 
-Para eliminar ordenadamente todos los recursos creados:
+Para desmantelar y limpiar de forma automatizada todo el laboratorio:
 
 ```bash
-# 1. Eliminar manifiestos del laboratorio y secretos
-kubectl delete -k cilium/manifests
+cilium/instalacion/limpiar-todo.sh
+```
+
+O paso a paso manualmente:
+
+```bash
+# 1. Eliminar extensiones y manifiestos del laboratorio
+kubectl delete -k cilium/manifests/extensiones --ignore-not-found=true
+kubectl delete -k cilium/manifests --ignore-not-found=true
 
 # 2. Desinstalar Cilium del clúster
 cilium uninstall
 
-# 3. Detener Minikube
+# 3. Detener Minikube y cerrar minikube tunnel (Ctrl+C en su terminal)
 minikube stop
 ```
 
