@@ -18,7 +18,6 @@ Gateway API es el sucesor del recurso `Ingress`. Define un modelo desacoplado en
 |---|---|
 | Minikube | Provee un clúster Kubernetes de un solo nodo en la máquina local. |
 | kubectl | Cliente de línea de comandos para operar el clúster. Incluye Kustomize mediante la opción `-k`. |
-| Helm | Gestor de paquetes de Kubernetes. Instala Traefik a partir de su chart oficial. |
 | Kustomize | Permite definir un overlay sobre los manifiestos comunes del repositorio sin modificarlos. |
 | Traefik v3 | Proxy inverso que actúa como controlador de Gateway API. |
 | Gateway API | Conjunto de CRDs del grupo `gateway.networking.k8s.io`. Versión utilizada: v1.6.2. |
@@ -28,7 +27,7 @@ Gateway API es el sucesor del recurso `Ingress`. Define un modelo desacoplado en
 ```text
 traefik/
 ├── README.md          Documentación según plantillas/PLANTILLA-implementacion.md
-├── instalacion/       Este documento y values.yaml de Helm
+├── instalacion/       Este documento y los manifiestos de Traefik (01 a 04)
 ├── manifests/         Overlay kustomize sobre comun/
 └── evidencias/        Capturas, salidas de comandos y diagramas
 ```
@@ -46,12 +45,6 @@ kubectl version --client
 ```
 
 Muestra la versión del cliente `kubectl`.
-
-```bash
-helm version
-```
-
-Confirma que Helm está instalado. Se requiere Helm 3.
 
 ```bash
 docker version
@@ -197,148 +190,89 @@ La lista debe estar vacía, porque aún no hay un controlador instalado.
 
 Traefik actúa como plano de datos (proxy inverso) y como plano de control, ya que observa los recursos de Gateway API y configura el enrutamiento.
 
-### 6.1 Creación del namespace
+La instalación es manual: cada recurso que Traefik necesita está en un archivo de `traefik/instalacion/`. `kubectl apply -f` sobre la carpeta los aplica en orden alfabético, por eso llevan prefijo numérico (el namespace debe existir antes que el resto).
 
-```bash
-kubectl create namespace traefik
-```
-![Creación del namespace traefik](../evidencias/namespace-traefik-created.png)
-Aísla los componentes del controlador del resto de las aplicaciones del clúster.
-
-```bash
-kubectl get namespace traefik
-```
-
-
-![Estado activo del namespace traefik](../evidencias/namespace-traefik-active.png)
-El namespace debe aparecer en estado `Active`.
-
-### 6.2 Archivo de valores de Helm
-
-Se crea el archivo `traefik/instalacion/values.yaml` con el siguiente contenido:
+### 6.1 Namespace (`01-namespace.yaml`)
 
 ```yaml
-providers:
-  kubernetesGateway:
-    enabled: true
-    statusAddress:
-      service:
-        name: traefik
-        namespace: traefik
-  kubernetesCRD:
-    enabled: false
-  kubernetesIngress:
-    enabled: false
-
-gateway:
-  enabled: false
-
-gatewayClass:
-  enabled: true
-
-ports:
-  web:
-    port: 8000
-    exposedPort: 80
-    protocol: TCP
-  websecure:
-    port: 8443
-    exposedPort: 443
-    protocol: TCP
-
-service:
-  type: LoadBalancer
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik
 ```
 
-| Valor | Descripción |
+Aísla los componentes del controlador del resto de las aplicaciones del clúster.
+
+### 6.2 Identidad y permisos (`02-rbac.yaml`)
+
+| Recurso | Función |
 |---|---|
-| `providers.kubernetesGateway.enabled` | Habilita el proveedor que procesa los recursos de Gateway API. |
-| `providers.kubernetesGateway.statusAddress.service` | Indica el Service cuya dirección externa se publica en `status.addresses` del Gateway. El script de verificación utiliza ese valor. |
-| `providers.kubernetesCRD.enabled` | Deshabilitado. El laboratorio no utiliza los recursos `IngressRoute` propios de Traefik. |
-| `providers.kubernetesIngress.enabled` | Deshabilitado. El laboratorio no utiliza el recurso `Ingress`. |
-| `gateway.enabled` | Deshabilitado. El laboratorio define su propio Gateway en `comun/`, por lo que no se crea el Gateway por defecto del chart. |
-| `gatewayClass.enabled` | Solicita la creación de la `GatewayClass` llamada `traefik`. |
-| `ports.web` y `ports.websecure` | Puertos de los entrypoints de Traefik dentro del pod (`port`) y puertos expuestos por el Service (`exposedPort`). |
-| `service.type` | `LoadBalancer`, para obtener la dirección externa mediante `minikube tunnel`. |
+| `ServiceAccount` `traefik` | Identidad con la que el pod se autentica ante el API Server. |
+| `ClusterRole` `traefik` | Lectura (`get`, `list`, `watch`) de Services, Secrets, ConfigMaps, EndpointSlices, Namespaces y de los recursos de Gateway API (`gatewayclasses`, `gateways`, `httproutes`, `grpcroutes`, `tcproutes`, `tlsroutes`, `referencegrants`, `backendtlspolicies`). Escritura (`update`) solo sobre sus subrecursos `status`. |
+| `ClusterRoleBinding` `traefik` | Asocia el ClusterRole al ServiceAccount. |
 
-Los entrypoints del pod escuchan en los puertos 8000 y 8443. Esta relación determina la configuración del overlay descrita en la sección 7.
+Sin estos permisos el proveedor no puede observar los recursos ni escribir las condiciones `Accepted` y `Programmed`.
 
-### 6.3 Despliegue con Helm
+### 6.3 Deployment (`03-deployment.yaml`)
 
-```bash
-helm repo add traefik https://traefik.github.io/charts
-```
-![Repositorio Helm de Traefik agregado](../evidencias/helm-repo-add-traefik.png)
-Registra el repositorio oficial de charts de Traefik.
+La configuración estática de Traefik se pasa como argumentos del contenedor:
 
-```bash
-helm repo update
-```
-![Actualización de repositorios Helm](../evidencias/helm-repo-update.png)
-Actualiza el índice de charts disponibles.
+| Argumento | Descripción |
+|---|---|
+| `--entryPoints.web.address=:8000/tcp` | Entrypoint HTTP. Los listeners del Gateway deben usar este puerto (sección 7). |
+| `--entryPoints.websecure.address=:8443/tcp` y `--entryPoints.websecure.http.tls=true` | Entrypoint HTTPS con terminación TLS. |
+| `--entryPoints.traefik.address=:8080/tcp` y `--ping=true` | Entrypoint interno con el endpoint `/ping` que usan las probes de readiness y liveness. |
+| `--providers.kubernetesgateway` | Habilita el proveedor que procesa los recursos de Gateway API. |
+| `--providers.kubernetesgateway.statusaddress.service.name` y `.namespace` | Service cuya dirección externa se publica en `status.addresses` del Gateway. El script de verificación utiliza ese valor. |
 
-```bash
-helm search repo traefik/traefik
-```
-![Búsqueda y versiones del chart de Traefik](../evidencias/helm-search-traefik-version.png)
+El contenedor usa la imagen `docker.io/traefik:v3.7.14`, se ejecuta como usuario no root (65532) y con sistema de archivos de solo lectura.
 
-Muestra la versión del chart y la versión de la aplicación que se instalarán. Estos valores se registran como parte de las versiones utilizadas.
+### 6.4 Service (`04-service.yaml`)
+
+Service de tipo `LoadBalancer` que expone los puertos 80 y 443 y los redirige a los entrypoints `web` (8000) y `websecure` (8443) del pod. La dirección externa la asigna `minikube tunnel`.
+
+### 6.5 Aplicación y verificación
 
 ```bash
-helm upgrade --install traefik traefik/traefik \
-  --namespace traefik \
-  --values traefik/instalacion/values.yaml
+kubectl apply -f traefik/instalacion/
 ```
 
-Instala Traefik en el namespace `traefik` con la configuración definida en `values.yaml`. El comando es idempotente: instala si el release no existe y actualiza si ya existe.
-![Instalación del release Helm de Traefik](../evidencias/helm-upgrade-install-traefik.png)
-
-Sobre el aviso de advertencia (DEPRECATION WARNING): indica simplemente que en versiones futuras de la gráfica Helm ya no incluirán los CRDs de Gateway API por defecto. Como ya se instalaron manualmente con kubectl apply -f ..., se está completamente cubierto.
-
-### 6.4 Verificación de la instalación
-
-```bash
-helm list --namespace traefik
+```text
+namespace/traefik created
+serviceaccount/traefik created
+clusterrole.rbac.authorization.k8s.io/traefik created
+clusterrolebinding.rbac.authorization.k8s.io/traefik created
+deployment.apps/traefik created
+service/traefik created
 ```
-![Listado del release Helm - parte 1](../evidencias/helm-list-traefik-1.png)
-![Listado del release Helm - parte 2](../evidencias/helm-list-traefik-2.png)
-El release `traefik` debe aparecer con estado `deployed`.
 
 ```bash
+kubectl -n traefik rollout status deployment/traefik
 kubectl -n traefik get pods -l app.kubernetes.io/name=traefik
 ```
-![Pod de Traefik en ejecución](../evidencias/traefik-pod-running.png)
+
 El pod de Traefik debe estar en estado `Running` y con `READY 1/1`.
 
 ```bash
 kubectl -n traefik get svc traefik
 ```
-![Service LoadBalancer de Traefik](../evidencias/traefik-svc-loadbalancer.png)
+
 El Service debe ser de tipo `LoadBalancer` y mostrar una dirección en la columna `EXTERNAL-IP`. Si aparece `<pending>`, verificar que `minikube tunnel` esté activo.
 
-```bash
-kubectl get gatewayclass
-```
-![GatewayClass traefik aceptada](../evidencias/gatewayclass-traefik-accepted.png)
-Debe existir la `GatewayClass` `traefik` con el controlador `traefik.io/gateway-controller`.
+La `GatewayClass` `traefik` no la crea el controlador: forma parte del overlay (sección 7) y se verifica después de aplicarlo.
 
-```bash
-kubectl get gatewayclass traefik -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}{"\n"}'
-```
+Salida completa de la verificación: [`../evidencias/instalacion-manual.txt`](../evidencias/instalacion-manual.txt).
 
-El valor esperado es `True`, que indica que el controlador aceptó la clase.
-
-Si la `GatewayClass` no existe, consultar la sección 11.3.
-
-### 6.5 Registro de versiones utilizadas
+### 6.6 Registro de versiones utilizadas
 
 | Componente | Comando | Valor |
 |---|---|---|
 | Gateway API (CRDs) | Sección 5.2 | v1.6.2 |
 | Kubernetes (servidor) | `kubectl version` | v1.37.0  |
 | Minikube | `minikube version` | v1.39.0 |
-| Helm | `helm version` | v4.3.0 |
-| Chart de Traefik y versión de la aplicación | `helm list --namespace traefik` | `CHART` traefik-41.7.0<br>`APP VERSION` v3.7.14 |
+| Traefik | `kubectl -n traefik get deploy traefik -o wide` | `docker.io/traefik:v3.7.14` |
+
+La instalación manual se verificó además en un clúster limpio con Minikube v1.38.1 y Kubernetes v1.35.1 (7/7 escenarios en `PASS`, [`../evidencias/instalacion-manual.txt`](../evidencias/instalacion-manual.txt)).
 
 ---
 
@@ -360,6 +294,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../comun
+  - gatewayclass.yaml
 patches:
   - target:
       kind: Gateway
@@ -376,8 +311,9 @@ patches:
         value: 8443
 ```
 
-| Operación | Efecto |
+| Recurso u operación | Efecto |
 |---|---|
+| `gatewayclass.yaml` | Declara la `GatewayClass` `traefik` con el controlador `traefik.io/gateway-controller`. |
 | `/spec/gatewayClassName` | Asocia el Gateway a la `GatewayClass` `traefik`. |
 | `/spec/listeners/0/port` | Cambia el listener `http` del puerto 80 al 8000. |
 | `/spec/listeners/1/port` | Cambia el listener `https` del puerto 443 al 8443. |
@@ -563,7 +499,7 @@ kubectl -n traefik logs deployment/traefik
 
 Causa: el puerto de un listener no coincide con el de un entrypoint de Traefik.
 
-Solución: verificar que el overlay reemplace los puertos de los listeners por 8000 y 8443 (sección 7) y que `ports.web.port` y `ports.websecure.port` en `values.yaml` tengan esos mismos valores.
+Solución: verificar que el overlay reemplace los puertos de los listeners por 8000 y 8443 (sección 7) y que `--entryPoints.web.address` y `--entryPoints.websecure.address` en `03-deployment.yaml` usen esos mismos puertos.
 
 ### 11.2 Service con `EXTERNAL-IP` en `<pending>`
 
@@ -573,32 +509,13 @@ Causa: `minikube tunnel` no está en ejecución.
 
 Solución: iniciar `minikube tunnel` en una terminal dedicada. Como alternativa, utilizar el acceso por port-forward de la sección 10.4.
 
-### 11.3 La GatewayClass no existe
+### 11.3 La GatewayClass no existe o no está aceptada
 
-Síntoma: `kubectl get gatewayclass` no lista `traefik` después de instalar el chart.
+Síntoma: `kubectl get gatewayclass` no lista `traefik`, o la columna `ACCEPTED` muestra `Unknown`.
 
-Causa: el chart condiciona la creación de la `GatewayClass` a la configuración del proveedor Gateway y del Gateway por defecto.
+Causa: la `GatewayClass` se crea con el overlay (`traefik/manifests/gatewayclass.yaml`), no con la instalación. `Unknown` indica que el pod de Traefik no está procesando recursos.
 
-Solución: crear el archivo `traefik/manifests/gatewayclass.yaml`:
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: GatewayClass
-metadata:
-  name: traefik
-spec:
-  controllerName: traefik.io/gateway-controller
-```
-
-Y agregarlo a la lista `resources` de `traefik/manifests/kustomization.yaml`:
-
-```yaml
-resources:
-  - ../../comun
-  - gatewayclass.yaml
-```
-
-Posteriormente se vuelve a ejecutar `kubectl apply -k traefik/manifests`.
+Solución: aplicar `kubectl apply -k traefik/manifests` y revisar `kubectl -n traefik logs deployment/traefik`. Si `kube-proxy` está en `CrashLoopBackOff` con `too many open files` (frecuente con varios clústeres minikube en el mismo host), el pod no alcanza el API Server: aumentar los límites de inotify del host con `sudo sysctl fs.inotify.max_user_instances=512 fs.inotify.max_user_watches=524288` y reiniciar los pods de `kube-proxy`.
 
 ### 11.4 Error al crear el Secret por namespace inexistente
 
@@ -606,15 +523,7 @@ Síntoma: `scripts/crear-certificado.sh` falla porque el namespace `gateway-lab`
 
 Solución: aplicar primero `kubectl apply -k traefik/manifests`, ejecutar después el script y verificar el Secret con el comando de la sección 8.3.
 
-### 11.5 Conflicto de CRDs durante la instalación con Helm
-
-Síntoma: `helm upgrade --install` informa de conflictos con CRDs de Gateway API ya instalados.
-
-Causa: el chart de Traefik incluye CRDs que coinciden con los instalados manualmente en la sección 5.
-
-Solución: repetir la instalación añadiendo la opción `--skip-crds` al comando de la sección 6.3.
-
-### 11.6 Rutas sin aceptar
+### 11.5 Rutas sin aceptar
 
 Síntoma: una HTTPRoute no muestra `Accepted` en `True`.
 
@@ -637,11 +546,10 @@ kubectl delete -k traefik/manifests
 Elimina el namespace `gateway-lab` y todos los recursos del laboratorio.
 
 ```bash
-helm uninstall traefik --namespace traefik
-kubectl delete namespace traefik
+kubectl delete -f traefik/instalacion/
 ```
 
-Desinstala Traefik y elimina su namespace. Si la `GatewayClass` fue creada manualmente (sección 11.3), se elimina con `kubectl delete gatewayclass traefik`.
+Elimina el namespace `traefik`, el RBAC, el Deployment y el Service de Traefik. La `GatewayClass` se elimina con el overlay en el paso anterior.
 
 ```bash
 kubectl delete -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
@@ -660,9 +568,8 @@ Detiene el clúster conservando su estado. `minikube delete` lo elimina por comp
 ## 13. Referencias
 
 - Traefik, Kubernetes Gateway API: <https://doc.traefik.io/reference/routing-configuration/kubernetes/gateway-api>
-- Traefik Helm chart: <https://github.com/traefik/traefik-helm-chart>
+- Opciones del proveedor `kubernetesgateway`: <https://doc.traefik.io/traefik/reference/install-configuration/providers/kubernetes/kubernetes-gateway/>
 - Gateway API: <https://gateway-api.sigs.k8s.io/>
 - Minikube: <https://minikube.sigs.k8s.io/docs/>
 - kubectl: <https://kubernetes.io/docs/reference/kubectl/>
-- Helm: <https://helm.sh/docs/>
 - Kustomize: <https://kubectl.docs.kubernetes.io/references/kustomize/>

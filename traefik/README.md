@@ -4,7 +4,7 @@
 |---|---|
 | Integrantes | Esteban Guarin Valencia<br>Valeria Ortiz Zulueta |
 | Rama | `equipo/traefik` |
-| Versión del controlador | Traefik v3.7.14 (Chart traefik-41.7.0) |
+| Versión del controlador | Traefik v3.7.14 (imagen `docker.io/traefik:v3.7.14`, instalación manual) |
 | Versión de Gateway API | v1.6.2 (Canal Standard) |
 | Clúster y versión de Kubernetes | Minikube v1.39.0 / Kubernetes v1.37.0 (driver Docker) |
 
@@ -45,7 +45,7 @@ flowchart LR
 
 - **Kubernetes**: v1.31 o superior (utilizado: v1.37.0 sobre Minikube v1.39.0).
 - **CRDs de Gateway API**: v1.6.2 (Canal Standard instalado con `standard-install.yaml`).
-- **Herramientas cliente**: `kubectl` v1.37.1+, `helm` v3/v4 y `minikube tunnel` activo.
+- **Herramientas cliente**: `kubectl` v1.37.1+ y `minikube tunnel` activo.
 - **Memoria y CPU mínimos**: 2 CPU y 4 GB de memoria RAM asignados a Minikube.
 
 Evidencias relacionadas:
@@ -65,35 +65,38 @@ El procedimiento detallado paso a paso se encuentra documentado en [`instalacion
    kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
    ```
 
-2. **Creación del namespace para el controlador**:
+2. **Instalación manual de Traefik** (sin Helm). Los manifiestos de `instalacion/` se aplican en orden alfabético:
    ```bash
-   kubectl create namespace traefik
+   kubectl apply -f traefik/instalacion/
+   kubectl -n traefik rollout status deployment/traefik
    ```
 
-3. **Configuración del repositorio Helm**:
-   ```bash
-   helm repo add traefik https://traefik.github.io/charts
-   helm repo update
-   ```
+   | Archivo | Recursos |
+   |---|---|
+   | [`01-namespace.yaml`](instalacion/01-namespace.yaml) | Namespace `traefik`. |
+   | [`02-rbac.yaml`](instalacion/02-rbac.yaml) | ServiceAccount, ClusterRole (lectura de Services, Secrets, EndpointSlices y recursos de Gateway API; escritura de `status`) y ClusterRoleBinding. |
+   | [`03-deployment.yaml`](instalacion/03-deployment.yaml) | Pod de Traefik v3.7.14 con el proveedor `kubernetesgateway` y los entrypoints `web` (8000) y `websecure` (8443). |
+   | [`04-service.yaml`](instalacion/04-service.yaml) | Service `LoadBalancer` que expone 80/443 hacia 8000/8443. |
 
-4. **Despliegue del chart de Traefik con valores personalizados**:
-   ```bash
-   helm upgrade --install traefik traefik/traefik \
-     --namespace traefik \
-     --values traefik/instalacion/values.yaml
-   ```
-
-Evidencias de instalación:
-- Pod de Traefik en estado Running: [`evidencias/traefik-pod-running.png`](evidencias/traefik-pod-running.png)
-- Service LoadBalancer con IP asignada: [`evidencias/traefik-svc-loadbalancer.png`](evidencias/traefik-svc-loadbalancer.png)
+Evidencia de instalación (pod, Service, GatewayClass y escenarios): [`evidencias/instalacion-manual.txt`](evidencias/instalacion-manual.txt)
 
 ---
 
 ## 5. GatewayClass y Gateway
 
 ### 5.1 GatewayClass
-Traefik registra automáticamente la `GatewayClass` con nombre `traefik` y controlador `traefik.io/gateway-controller`.
-- Evidencia de clase aceptada: [`evidencias/gatewayclass-traefik-accepted.png`](evidencias/gatewayclass-traefik-accepted.png)
+Traefik no crea la `GatewayClass`: se declara en [`manifests/gatewayclass.yaml`](manifests/gatewayclass.yaml) con el controlador `traefik.io/gateway-controller` y se aplica junto con el overlay.
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: traefik
+spec:
+  controllerName: traefik.io/gateway-controller
+```
+
+- Evidencia de clase aceptada: [`evidencias/instalacion-manual.txt`](evidencias/instalacion-manual.txt)
 
 ### 5.2 Overlay Kustomize (`traefik/manifests/kustomization.yaml`)
 El archivo Kustomize enlaza la base común del repositorio (`../../comun`) y aplica los siguientes parches necesarios para Traefik:
@@ -102,6 +105,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../comun
+  - gatewayclass.yaml
 patches:
   - target:
       kind: Gateway
@@ -162,7 +166,7 @@ Fallos: 0/7
 1. **Emparejamiento estricto de puertos de Listeners**:
    A diferencia de otros controladores que crean dinámicamente puertos y listeners en el plano de datos, Traefik rechaza cualquier listener de un recurso `Gateway` cuyo puerto no coincida con un entrypoint predefinido en su configuración estática. Esto motivó el ajuste del overlay Kustomize a los puertos 8000 y 8443.
 2. **Propagación de direcciones de red**:
-   Para que el recurso `Gateway` exponga su dirección en `status.addresses`, Traefik requiere configurar explícitamente `providers.kubernetesGateway.statusAddress.service` en el archivo `values.yaml`, vinculándolo al Service del balanceador.
+   Para que el recurso `Gateway` exponga su dirección en `status.addresses`, Traefik requiere los argumentos `--providers.kubernetesgateway.statusaddress.service.name` y `.namespace` en [`instalacion/03-deployment.yaml`](instalacion/03-deployment.yaml), vinculándolo al Service del balanceador.
 
 ---
 
@@ -190,9 +194,8 @@ Para desmantelar todos los recursos creados durante las pruebas:
 # 1. Eliminar recursos del laboratorio y namespace gateway-lab
 kubectl delete -k traefik/manifests
 
-# 2. Desinstalar Traefik y su namespace
-helm uninstall traefik --namespace traefik
-kubectl delete namespace traefik
+# 2. Desinstalar Traefik (namespace, RBAC, Deployment y Service)
+kubectl delete -f traefik/instalacion/
 
 # 3. Eliminar los CRDs de Gateway API
 kubectl delete -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
@@ -206,7 +209,7 @@ minikube stop
 ## 11. Análisis
 
 - **Ventajas**: Arquitectura ligera en un solo binario; no requiere múltiples pods auxiliares ni operadores pesados; soporte nativo completo para las características Core y Extended evaluadas (incluyendo reescritura de URL y manipulación de cabeceras).
-- **Limitaciones**: Requiere correspondencia rígida entre los puertos de los listeners del Gateway y los entrypoints estáticos definidos en la instalación del chart.
+- **Limitaciones**: Requiere correspondencia rígida entre los puertos de los listeners del Gateway y los entrypoints estáticos definidos en los argumentos del Deployment.
 - **Nivel de conformidad**: Excelente. Superó el 100% de los escenarios del laboratorio (0 fallos en 7 pruebas), demostrando ser un reemplazo directo y robusto frente a la retirada de `ingress-nginx`.
 
 ---
@@ -214,7 +217,7 @@ minikube stop
 ## 12. Referencias
 
 - Documentación oficial de Traefik Gateway API: <https://doc.traefik.io/reference/routing-configuration/kubernetes/gateway-api>
-- Chart oficial de Traefik: <https://github.com/traefik/traefik-helm-chart>
+- Opciones del proveedor `kubernetesgateway`: <https://doc.traefik.io/traefik/reference/install-configuration/providers/kubernetes/kubernetes-gateway/>
 - Especificación oficial de Gateway API: <https://gateway-api.sigs.k8s.io/>
 - Bitácora de instalación paso a paso: [`instalacion/instalación.md`](instalacion/instalación.md)
 
