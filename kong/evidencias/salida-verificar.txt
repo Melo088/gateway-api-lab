@@ -1,11 +1,11 @@
-Gateway: gateway-lab/gateway  Dirección: 10.108.244.77  HTTP: 80  HTTPS: 443
+Gateway: gateway-lab/gateway  Dirección: 127.0.0.1  HTTP: 18080  HTTPS: 18443
 
 PASS  E01  Enrutamiento por hostname y path
 PASS  E02  Matching por header x-version
-PASS  E03  Pesos 80/20 (20/100 hacia v2)
+PASS  E03  Pesos 80/20 (21/100 hacia v2)
 PASS  E04  Modificación de headers de petición y respuesta
 PASS  E05  Rewrite /api/<ruta> hacia /<ruta>
-FAIL  E06  Redirección HTTP a HTTPS (301): status=426
+FAIL  E06  Redirección HTTP a HTTPS (301): status=200
 PASS  E07  Terminación TLS
 
 Fallos: 1/7

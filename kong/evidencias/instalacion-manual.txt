@@ -1,0 +1,63 @@
+$ kubectl apply -f kong/instalacion/
+(12 CRDs de configuration.konghq.com created)
+namespace/kong created
+serviceaccount/kong created
+clusterrole.rbac.authorization.k8s.io/kong created
+clusterrolebinding.rbac.authorization.k8s.io/kong created
+role.rbac.authorization.k8s.io/kong created
+rolebinding.rbac.authorization.k8s.io/kong created
+service/kong-proxy created
+deployment.apps/kong created
+
+$ kubectl version
+Server Version: v1.35.1
+
+$ kubectl -n kong get deploy,pods,svc -o wide
+NAME                   READY   UP-TO-DATE   AVAILABLE   AGE     CONTAINERS                 IMAGES                                                SELECTOR
+deployment.apps/kong   1/1     1            1           3m56s   ingress-controller,proxy   kong/kubernetes-ingress-controller:3.5.0,kong:3.8.0   app.kubernetes.io/name=kong
+
+NAME                        READY   STATUS    RESTARTS   AGE    IP           NODE       NOMINATED NODE   READINESS GATES
+pod/kong-8564595d8f-87tp8   2/2     Running   0          2m2s   10.244.0.7   kong-lab   <none>           <none>
+
+NAME                 TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)                      AGE     SELECTOR
+service/kong-proxy   LoadBalancer   10.106.8.242   <pending>     80:32717/TCP,443:31139/TCP   3m56s   app.kubernetes.io/name=kong
+
+$ kubectl get gatewayclass
+NAME   CONTROLLER                          ACCEPTED   AGE
+kong   konghq.com/kic-gateway-controller   True       3m16s
+
+$ kubectl -n gateway-lab get gateway
+NAME      CLASS   ADDRESS   PROGRAMMED   AGE
+gateway   kong              True         3m17s
+
+$ kubectl -n gateway-lab get httproute -o custom-columns=...
+NAME                      ACCEPTED   PROGRAMMED
+e01-enrutamiento          True       True
+e02-match-header          True       True
+e03-pesos                 True       True
+e04-modificar-headers     True       True
+e05-rewrite               True       True
+e06-redirect              True       True
+e07-tls                   True       True
+e08-extension-ratelimit   True       True
+
+$ GATEWAY_ADDRESS=127.0.0.1 HTTP_PORT=18080 HTTPS_PORT=18443 scripts/verificar.sh
+Gateway: gateway-lab/gateway  Dirección: 127.0.0.1  HTTP: 18080  HTTPS: 18443
+
+PASS  E01  Enrutamiento por hostname y path
+PASS  E02  Matching por header x-version
+PASS  E03  Pesos 80/20 (21/100 hacia v2)
+PASS  E04  Modificación de headers de petición y respuesta
+PASS  E05  Rewrite /api/<ruta> hacia /<ruta>
+FAIL  E06  Redirección HTTP a HTTPS (301): status=200
+PASS  E07  Terminación TLS
+
+Fallos: 1/7
+
+$ for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w "HTTP %{http_code}\n" --connect-to ratelimit.lab.local:80:127.0.0.1:18080 http://ratelimit.lab.local/get; done
+HTTP 200
+HTTP 200
+HTTP 200
+HTTP 200
+HTTP 200
+HTTP 429

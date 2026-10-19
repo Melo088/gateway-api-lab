@@ -1,0 +1,7 @@
+$ kubectl -n kong port-forward deploy/kong 18444:8444
+$ curl -sk https://localhost:18444/routes ; curl -sk https://localhost:18444/plugins  (filtrado a redirect.lab.local)
+
+ROUTE  httproute.gateway-lab.e06-redirect.0.0  hosts=['redirect.lab.local']  protocols=['http', 'https']  paths=['~/$', '/']  https_redirect_status_code=426
+ROUTE  httproute.gateway-lab.e07-tls.0.0  hosts=['tls.lab.local', 'redirect.lab.local']  protocols=['http', 'https']  paths=['~/$', '/']  https_redirect_status_code=426
+PLUGIN response-transformer  route=httproute.gateway-lab.e06-redirect.0.0  add.headers=['Location:/']
+PLUGIN request-termination  route=httproute.gateway-lab.e06-redirect.0.0  status_code=301
