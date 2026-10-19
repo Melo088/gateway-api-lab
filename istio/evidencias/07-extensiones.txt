@@ -1,0 +1,68 @@
+$ kubectl apply -k istio/manifests/extensiones
+namespace/fuera-mesh created
+namespace/gateway-lab configured
+service/httpbin-v1 configured
+service/httpbin-v2 unchanged
+deployment.apps/httpbin-v1 unchanged
+deployment.apps/httpbin-v2 unchanged
+gateway.gateway.networking.k8s.io/gateway configured
+gateway.gateway.networking.k8s.io/waypoint created
+httproute.gateway.networking.k8s.io/e01-enrutamiento configured
+httproute.gateway.networking.k8s.io/e02-match-header configured
+httproute.gateway.networking.k8s.io/e03-pesos configured
+httproute.gateway.networking.k8s.io/e04-modificar-headers configured
+httproute.gateway.networking.k8s.io/e05-rewrite configured
+httproute.gateway.networking.k8s.io/e06-redirect configured
+httproute.gateway.networking.k8s.io/e07-tls configured
+httproute.gateway.networking.k8s.io/x01-authz created
+httproute.gateway.networking.k8s.io/x02-jwt created
+httproute.gateway.networking.k8s.io/x03-mesh created
+authorizationpolicy.security.istio.io/x01-authz created
+authorizationpolicy.security.istio.io/x02-jwt created
+peerauthentication.security.istio.io/default created
+requestauthentication.security.istio.io/x02-jwt created
+pod/cliente created
+pod/cliente created
+
+$ kubectl -n gateway-lab wait --for=condition=Programmed gateway/waypoint --timeout=120s
+gateway.gateway.networking.k8s.io/waypoint condition met
+
+$ kubectl wait --for=condition=Ready pod/cliente -n gateway-lab --timeout=120s && kubectl wait --for=condition=Ready pod/cliente -n fuera-mesh --timeout=120s
+pod/cliente condition met
+pod/cliente condition met
+
+$ kubectl -n gateway-lab get gateway
+NAME       CLASS            ADDRESS        PROGRAMMED   AGE
+gateway    istio                           False        23s
+waypoint   istio-waypoint   10.97.169.14   True         6s
+
+$ kubectl -n gateway-lab get authorizationpolicy,requestauthentication,peerauthentication
+NAME                                              ACTION   AGE
+authorizationpolicy.security.istio.io/x01-authz   DENY     7s
+authorizationpolicy.security.istio.io/x02-jwt     DENY     7s
+
+NAME                                              AGE
+requestauthentication.security.istio.io/x02-jwt   7s
+
+NAME                                           MODE     AGE
+peerauthentication.security.istio.io/default   STRICT   7s
+
+$ kubectl -n gateway-lab get httproute x03-mesh -o jsonpath='{range .status.parents[*]}{.parentRef.kind}/{.parentRef.name}: {range .conditions[*]}{.type}={.status} {end}{"\n"}{end}'
+Service/httpbin-v1: Accepted=True ResolvedRefs=True ResolvedWaypoints=True 
+
+$ istioctl ztunnel-config workloads | grep -E 'NAMESPACE|gateway-lab|fuera-mesh'
+NAMESPACE    POD NAME                          ADDRESS      NODE      WAYPOINT PROTOCOL
+fuera-mesh   cliente                           10.244.0.10  istio-lab None     TCP
+gateway-lab  cliente                           10.244.0.11  istio-lab None     HBONE
+gateway-lab  gateway-istio-64ffb4c6bf-w7rkb    10.244.0.8   istio-lab None     TCP
+gateway-lab  httpbin-v1-74dbdcb9f6-h2zjn       10.244.0.6   istio-lab None     HBONE
+gateway-lab  httpbin-v2-654c65584f-s8djq       10.244.0.7   istio-lab None     HBONE
+gateway-lab  waypoint-85bfcf56c-v5fmv          10.244.0.9   istio-lab None     TCP
+
+$ istioctl ztunnel-config services | grep -E 'NAMESPACE|gateway-lab'
+NAMESPACE    SERVICE NAME                SERVICE VIP    WAYPOINT ENDPOINTS
+gateway-lab  gateway-istio               10.108.55.141  None     1/1
+gateway-lab  httpbin-v1                  10.109.230.145 waypoint 1/1
+gateway-lab  httpbin-v2                  10.105.167.110 None     1/1
+gateway-lab  waypoint                    10.97.169.14   None     1/1
+

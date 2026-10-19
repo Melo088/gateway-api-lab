@@ -1,0 +1,34 @@
+$ GATEWAY_ADDRESS=192.168.58.2 HTTP_PORT=30777 istio/manifests/extensiones/verificar.sh
+Gateway: gateway-lab/gateway  Dirección: 192.168.58.2  HTTP: 30777
+
+PASS  X01  AuthorizationPolicy: /anything/publico 200, /anything/privado 403
+PASS  X02  JWT: sin token 403, token inválido 401, token válido 200
+PASS  X02  JWT: claim sub enviado al backend en x-jwt-sub
+PASS  X03  GAMMA vía waypoint: 50/50 hacia httpbin-v1 (45/100 hacia v2)
+PASS  X03  mTLS STRICT: cliente del mesh 200, cliente fuera del mesh rechazado
+
+Fallos: 0/5
+
+$ curl -si --connect-to authz.lab.local:80:192.168.58.2:30777 http://authz.lab.local/anything/privado
+HTTP/1.1 403 Forbidden
+content-length: 19
+content-type: text/plain
+date: Sat, 17 Oct 2026 13:52:05 GMT
+server: istio-envoy
+
+RBAC: access denied
+$ curl -si --connect-to jwt.lab.local:80:192.168.58.2:30777 -H 'Authorization: Bearer token-invalido' http://jwt.lab.local/headers
+HTTP/1.1 401 Unauthorized
+www-authenticate: Bearer realm="http://jwt.lab.local/headers", error="invalid_token"
+content-length: 79
+content-type: text/plain
+date: Sat, 17 Oct 2026 13:52:05 GMT
+server: istio-envoy
+
+Jwt is not in the form of Header.Payload.Signature with two dots and 3 sections
+$ kubectl -n fuera-mesh exec cliente -- curl -sv --max-time 5 http://httpbin-v2.gateway-lab:8080/get 2>&1 | tail -4
+* Request completely sent off
+* Recv failure: Connection reset by peer
+* closing connection #0
+command terminated with exit code 56
+

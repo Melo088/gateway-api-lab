@@ -1,0 +1,8 @@
+$ istioctl analyze -A
+Warning [IST0171] (AuthorizationPolicy gateway-lab/x01-authz) A condition with a negative status is present: type=WaypointAccepted, reason=TargetNotFound, message=not bound.
+Warning [IST0171] (AuthorizationPolicy gateway-lab/x02-jwt) A condition with a negative status is present: type=WaypointAccepted, reason=TargetNotFound, message=not bound.
+Warning [IST0171] (Gateway gateway-lab/gateway) A condition with a negative status is present: type=Programmed, reason=AddressNotAssigned, message=Assigned to service(s) gateway-istio.gateway-lab.svc.cluster.local:443 and gateway-istio.gateway-lab.svc.cluster.local:80, but failed to assign to all requested addresses: address pending for hostname "gateway-istio.gateway-lab.svc.cluster.local".
+Warning [IST0175] (Deployment istio-system/istiod) BLOCKED_CIDRS_IN_JWKS_URIS is not configured but 1 RequestAuthentication resource(s) exist (gateway-lab/x02-jwt). Consider configuring it to restrict JWKS URI fetches to trusted networks.
+Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection. Run 'kubectl label namespace default istio-injection=enabled' to enable it, or 'kubectl label namespace default istio-injection=disabled' to explicitly mark it as not needing injection.
+Info [IST0102] (Namespace fuera-mesh) The namespace is not enabled for Istio injection. Run 'kubectl label namespace fuera-mesh istio-injection=enabled' to enable it, or 'kubectl label namespace fuera-mesh istio-injection=disabled' to explicitly mark it as not needing injection.
+

@@ -1,0 +1,15 @@
+# Overlay de Istio sobre la base común (E01-E07).
+# Istio aprovisiona el Deployment y el Service gateway-istio a partir del Gateway;
+# abre 80/443 en el pod, por lo que no se parchean los puertos de los listeners.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../comun
+patches:
+  - target:
+      kind: Gateway
+      name: gateway
+    patch: |-
+      - op: replace
+        path: /spec/gatewayClassName
+        value: istio
