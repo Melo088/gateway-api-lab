@@ -445,7 +445,7 @@ Documentación completa: [`kong/README.md`](kong/README.md).
 Kong Gateway es un API gateway basado en OpenResty/Nginx. En Kubernetes se
 opera con Kong Ingress Controller (KIC), que traduce Gateway API a entidades de
 Kong y las carga en memoria del proxy en modo DB-less. Se usa el modelo de
-Gateway no gestionado (unmanaged) con Gateway Discovery.
+Gateway no gestionado (unmanaged), con KIC y el proxy en el mismo pod.
 
 | Componente | Imagen | Función |
 |---|---|---|

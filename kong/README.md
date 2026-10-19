@@ -15,7 +15,7 @@ Kong Gateway es un API Gateway nativo de la nube de alto rendimiento, modular y 
 
 ## 2. Arquitectura
 
-Kong opera bajo el modelo de **Gateway no gestionado (Unmanaged Gateway)** con **Gateway Discovery**:
+Kong opera bajo el modelo de **Gateway no gestionado (Unmanaged Gateway)**, con KIC y el proxy como contenedores del mismo pod (sin Gateway Discovery):
 
 - **Plano de Control (KIC):** Monitorea los objetos `GatewayClass`, `Gateway` y `HTTPRoute` en el API Server y publica la configuración en memoria hacia la Admin API local del proxy Kong (`https://localhost:8444`).
 - **Plano de Datos (Kong Proxy):** Recibe el tráfico en Capa 4/Capa 7 a través del Service `LoadBalancer` expuesto por `minikube tunnel`, ejecuta la terminación TLS, el balanceo de carga y aplica los filtros tipados hacia los pods de backend.
