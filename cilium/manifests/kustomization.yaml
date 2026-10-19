@@ -1,0 +1,16 @@
+# Overlay de Cilium sobre la base común (E01-E07).
+# Cilium implementa GatewayClass con spec.controllerName: io.cilium/gateway-controller.
+# Al aplicar el Gateway, Cilium aprovisiona automáticamente un Service de tipo
+# LoadBalancer en el namespace gateway-lab y escucha en los puertos estándar 80 y 443.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../comun
+patches:
+  - target:
+      kind: Gateway
+      name: gateway
+    patch: |-
+      - op: replace
+        path: /spec/gatewayClassName
+        value: cilium
