@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Integrantes | Equipo Cilium |
+| Integrantes | Juan David Pacheco Vargas<br>Angela Camila Quitiaquez |
 | Rama | `equipo/cilium` |
 | Versión del controlador | Cilium v1.20.3 (Envoy v1.38.6), instalado con `cilium-cli` v0.20.1 |
 | Versión de Gateway API | v1.6.2 (Canal Standard) |
@@ -282,7 +282,7 @@ minikube delete
 ### Ventajas
 1. **Rendimiento eBPF**: el balanceo de Services se hace con eBPF sin kube-proxy (no se midió latencia en este laboratorio).
 2. **Plataforma Todo en Uno**: Unifica CNI, enrutamiento East-West, Gateway North-South y seguridad en un solo stack tecnológico.
-3. **Optimización FinOps**: El modo compartido permite ahorrar hasta un 95% en costes fijos de balanceadores de nube (NLB/ALB) y el modo Direct Server Return (DSR) reduce costes de transferencia de datos.
+3. **Optimización FinOps**: un Gateway compartido atiende muchas `HTTPRoute` con un solo balanceador de nube, y Direct Server Return (DSR) reduce el tráfico entre nodos (no activado en este laboratorio).
 4. **Seguridad Avanzada**: Inspección granular L7 con `CiliumNetworkPolicy` sin necesidad de inyectar sidecars invasivos.
 
 ### Limitaciones
