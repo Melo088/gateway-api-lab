@@ -20,6 +20,17 @@ minikube start --driver=docker
 minikube tunnel        # en otra terminal; asigna IP a Services LoadBalancer
 ```
 
+Cilium es la excepción: reemplaza el CNI y `kube-proxy`, así que el clúster se
+crea sin ninguno de los dos y con el driver `kvm2` (con el driver `docker` el
+tráfico hacia Envoy no llega a su socket). No usa `minikube tunnel`: asigna la
+IP del Gateway con LB IPAM. Detalle en [`cilium/README.md`](../cilium/README.md).
+
+```bash
+minikube start --driver=kvm2 --cpus=2 --memory=4096 \
+  --network-plugin=cni --cni=false \
+  --extra-config=kubeadm.skip-phases=addon/kube-proxy
+```
+
 ### kind
 
 ```bash

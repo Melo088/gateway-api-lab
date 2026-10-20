@@ -226,4 +226,4 @@ Es el **orquestador maestro** del laboratorio. Coordina las 6 fases del ciclo de
 5. Despliega el overlay Kustomize (`kubectl apply -k cilium/manifests`) y espera que el Gateway obtenga IP.
 6. Invoca a `scripts/verificar.sh` para evaluar los 7 escenarios estándar y prueba la extensión eBPF.
 
-Este script garantiza que cualquier evaluador del proyecto pueda clonar la rama y tener el laboratorio 100% operativo con un solo comando.
+Con el clúster creado según la sección 4 del README, este script deja el laboratorio desplegado y verificado con un solo comando.

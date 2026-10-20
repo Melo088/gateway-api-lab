@@ -831,7 +831,7 @@ Con las extensiones de Istio aplicadas, el primer paso es
 | Istio | Juan Camilo Melo, Juan Felipe Garzón | `equipo/istio` |
 | Kong | Santiago Gómez Robledo, Juan José Arias | `equipo/kong` |
 | Traefik | Esteban Guarín Valencia, Valeria Ortiz Zulueta | `equipo/traefik` |
-| Cilium | Juan David Pacheco Vargas, Angdicode | `equipo/cilium` |
+| Cilium | Juan David Pacheco Vargas, Angela Camila Quitiaquez | `equipo/cilium` |
 
 Mantenimiento del repositorio y code owner: `@Melo088`.
 
