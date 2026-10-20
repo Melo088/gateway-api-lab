@@ -2,20 +2,25 @@ $ cilium status
     /¯¯\
  /¯¯\__/¯¯\    Cilium:             OK
  \__/¯¯\__/    Operator:           OK
- /¯¯\__/¯¯\    Envoy DaemonSet:    OK (cilium-envoy)
+ /¯¯\__/¯¯\    Envoy DaemonSet:    OK
  \__/¯¯\__/    Hubble Relay:       disabled
     \__/       ClusterMesh:        disabled
 
-Deployment             cilium-operator    Desired: 1, Ready: 1/1, Available: 1/1
-DaemonSet              cilium             Desired: 1, Ready: 1/1, Available: 1/1
-DaemonSet              cilium-envoy       Desired: 1, Ready: 1/1, Available: 1/1
-Containers:            cilium             Running: 1
-                       cilium-operator    Running: 1
-                       cilium-envoy       Running: 1
-Cluster Pods:          7/7 managed by Cilium
-Helm chart version:    1.16.2
-Image versions         cilium             quay.io/cilium/cilium:v1.16.2: 1
-                       cilium-operator    quay.io/cilium/operator-generic:v1.16.2: 1
-                       cilium-envoy       quay.io/cilium/cilium-envoy:v1.29.7: 1
-Gateway API:           Enabled (Controller: io.cilium/gateway-controller)
-KubeProxyReplacement:  True (Strict)
+DaemonSet              cilium                   Desired: 1, Ready: 1/1, Available: 1/1
+DaemonSet              cilium-envoy             Desired: 1, Ready: 1/1, Available: 1/1
+Deployment             cilium-operator          Desired: 1, Ready: 1/1, Available: 1/1
+Containers:            cilium                   Running: 1
+                       cilium-envoy             Running: 1
+                       cilium-operator          Running: 1
+                       clustermesh-apiserver    
+                       hubble-relay             
+Cluster Pods:          3/3 managed by Cilium
+Helm chart version:    1.20.3
+Image versions         cilium             quay.io/cilium/cilium:v1.20.3: 1
+                       cilium-envoy       quay.io/cilium/cilium-envoy:v1.38.6-1791537840-00e749f11f69334c625e53fc1ce2fc6c7f34a51f: 1
+                       cilium-operator    quay.io/cilium/operator-generic:v1.20.3: 1
+
+$ kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep -E "KubeProxyReplacement|Routing|Proxy Status"
+KubeProxyReplacement:    True   [eth0  192.168.39.225 (Direct Routing), eth1  192.168.122.251]
+Routing:                 Network: Tunnel [vxlan]   Host: Legacy
+Proxy Status:            OK, ip 10.0.0.251, 1 redirects active on ports 10000-20000, Envoy: external

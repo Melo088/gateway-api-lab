@@ -65,4 +65,4 @@ Para ejecutar este laboratorio sin saturar la máquina local de desarrollo:
 * **Comportamiento en Minikube**:
   * En local no se incurre en facturación monetaria, pero el consumo de RAM/CPU es visible en el host.
   * Al reemplazar `kube-proxy`, Minikube se vuelve notablemente más ágil y responde más rápido ante la creación y eliminación masiva de servicios y rutas.
-  * `minikube tunnel` emula el comportamiento de un Cloud Load Balancer asignando una IP virtual de la interfaz de red local (`10.x.x.x` o `127.0.0.1`), permitiendo replicar el 100% de la experiencia productiva a coste cero.
+  * LB IPAM con anuncios L2 de Cilium emula un balanceador de nube asignando al Gateway una IP de la subred de minikube (`192.168.39.200`), sin `minikube tunnel` ni MetalLB.

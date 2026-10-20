@@ -6,8 +6,9 @@
 #           (E01-E07) y la extensión de seguridad L7 con eBPF.
 #
 # Prerrequisitos:
-#   - Clúster Kubernetes activo (ej. minikube start --network-plugin=cni)
-#   - Si usas Minikube, tener 'minikube tunnel' activo en otra terminal
+#   - Clúster sin CNI ni kube-proxy (cilium/README.md, sección 4):
+#       minikube start --driver=kvm2 --network-plugin=cni --cni=false \
+#         --extra-config=kubeadm.skip-phases=addon/kube-proxy
 # ==============================================================================
 set -euo pipefail
 
@@ -19,7 +20,7 @@ echo " [FASE 1/6] Verificando conexión al clúster Kubernetes"
 echo "============================================================"
 if ! kubectl cluster-info >/dev/null 2>&1; then
   echo "ERROR: No hay clúster activo. Inicia minikube antes de ejecutar este script:" >&2
-  echo "  minikube start --network-plugin=cni --memory=4096 --cpus=2" >&2
+  echo "  minikube start --driver=kvm2 --cpus=2 --memory=4096 --network-plugin=cni --cni=false --extra-config=kubeadm.skip-phases=addon/kube-proxy" >&2
   exit 1
 fi
 kubectl get nodes -o wide
@@ -55,7 +56,7 @@ echo "Esperando que los despliegues de httpbin estén listos..."
 kubectl -n gateway-lab rollout status deployment/httpbin-v1 --timeout=120s
 kubectl -n gateway-lab rollout status deployment/httpbin-v2 --timeout=120s
 
-echo "Esperando que el Gateway obtenga dirección IP externa (requiere minikube tunnel)..."
+echo "Esperando que el Gateway obtenga dirección IP externa (LB IPAM de Cilium)..."
 for i in {1..30}; do
   ADDR=$(kubectl -n gateway-lab get gateway gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
   if [[ -n "$ADDR" ]]; then
@@ -73,9 +74,8 @@ echo "============================================================"
 echo " [FASE 6/6] Ejecutando Pruebas de Verificación (E01 a E07)"
 echo "============================================================"
 if ! "${REPO_ROOT}/scripts/verificar.sh"; then
-  echo "ADVERTENCIA: Si falló por falta de IP externa, puedes probar con port-forward:"
-  echo "  kubectl -n gateway-lab port-forward svc/cilium-gateway-gateway 8080:80 8443:443"
-  echo "  GATEWAY_ADDRESS=127.0.0.1 HTTP_PORT=8080 HTTPS_PORT=8443 scripts/verificar.sh"
+  echo "ADVERTENCIA: si falló por falta de IP externa, revisar el pool de cilium/instalacion/lb-ipam.yaml"
+  echo "  (debe pertenecer a la subred de 'minikube ip')."
 fi
 
 echo

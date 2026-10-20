@@ -1,0 +1,29 @@
+# Configuración de Cilium 1.20.3 para cilium-cli (instalador propio de Cilium).
+#   cilium install --version 1.20.3 -f cilium/instalacion/cilium.yaml --wait
+#
+# Requiere los CRDs de Gateway API v1.6.2 instalados antes que Cilium y un
+# clúster sin CNI ni kube-proxy (minikube --driver=kvm2 --cni=false, ver README).
+
+# Reemplazo de kube-proxy con eBPF; obligatorio para Gateway API.
+kubeProxyReplacement: true
+# Sin kube-proxy, la dirección del API Server se lee del ConfigMap cluster-info.
+k8sServiceHost: auto
+
+# Controlador de Gateway API (GatewayClass cilium) con Envoy embebido.
+gatewayAPI:
+  enabled: true
+
+# LB IPAM + anuncios L2: Cilium asigna IP a los Services LoadBalancer y la
+# anuncia por ARP en la red de minikube (sustituye a minikube tunnel).
+l2announcements:
+  enabled: true
+externalIPs:
+  enabled: true
+# Los anuncios L2 usan Leases: se sube el límite de peticiones al API Server.
+k8sClientRateLimit:
+  qps: 10
+  burst: 20
+
+
+operator:
+  replicas: 1

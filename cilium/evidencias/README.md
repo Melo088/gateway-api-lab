@@ -8,12 +8,12 @@ Este directorio almacena los registros de ejecución, salidas de terminal y capt
 
 | Archivo | Comando Origen | Propósito |
 |---|---|---|
-| [`01-cluster-nodos.txt`](01-cluster-nodos.txt) | `kubectl get nodes -o wide` | Evidencia de clúster activo, versión del kernel Linux y runtime de contenedores. |
-| [`02-crds-gateway-api.txt`](02-crds-gateway-api.txt) | `kubectl get crd \| grep gateway` | Lista de CRDs de Gateway API v1.6.2 (Standard) registrados. |
-| [`03-cilium-status.txt`](03-cilium-status.txt) | `cilium status` | Estado de salud de los componentes: `cilium-operator`, `cilium` (DaemonSet) y `cilium-envoy`. |
-| [`04-gateway-programmed.txt`](04-gateway-programmed.txt) | `kubectl describe gateway gateway` | Muestra condiciones `Accepted: True` y `Programmed: True` con IP asignada. |
+| [`01-cluster-nodos.txt`](01-cluster-nodos.txt) | `kubectl get nodes -o wide`, `kubectl -n kube-system get ds kube-proxy` | Nodo minikube kvm2 (kernel 6.6.95, Kubernetes v1.35.1) sin `kube-proxy`. |
+| [`02-crds-gateway-api.txt`](02-crds-gateway-api.txt) | `kubectl get crd \| grep gateway` | CRDs de Gateway API registrados y `bundle-version` v1.6.2. |
+| [`03-cilium-status.txt`](03-cilium-status.txt) | `cilium status`, `cilium-dbg status` | Cilium 1.20.3 en `OK`, reemplazo de kube-proxy y proxy L7 activos. |
+| [`04-gateway-programmed.txt`](04-gateway-programmed.txt) | `kubectl get gatewayclass`, `kubectl -n gateway-lab get gateway,svc,httproute` | GatewayClass aceptada, pool de LB IPAM y Gateway `Programmed` con `192.168.39.200`. |
 | [`05-verificar-escenarios.txt`](05-verificar-escenarios.txt) | `scripts/verificar.sh` | Salida oficial con los 7 escenarios en estado **PASS** (0/7 fallos). |
-| [`06-extension-l7.txt`](06-extension-l7.txt) | `cilium/manifests/extensiones/verificar.sh` | Validación de la política L7 con eBPF (GET permitido, POST rechazado con 403). |
+| [`06-extension-l7.txt`](06-extension-l7.txt) | `cilium/manifests/extensiones/verificar.sh` | Política L7: GET permitido (200), POST rechazado (403); sin la política, el POST da 200. |
 
 ---
 

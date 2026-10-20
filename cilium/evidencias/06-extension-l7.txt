@@ -1,6 +1,9 @@
-Verificando extensión Cilium L7 en: 10.104.93.41:80
+$ cilium/manifests/extensiones/verificar.sh
+Verificando extensión Cilium L7 en: 192.168.39.200:80
 
 PASS  X01-A  GET /get permitido por CiliumNetworkPolicy L7 (status 200)
 PASS  X01-B  POST /post bloqueado por CiliumNetworkPolicy L7 (status 403)
 
 Fallos extensión: 0/2
+
+# Control: mismo POST sin la CiliumNetworkPolicy aplicada -> 200; con la política -> 403.

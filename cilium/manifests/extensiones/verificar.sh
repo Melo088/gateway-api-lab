@@ -49,10 +49,10 @@ code_post="$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 -X POST \
   --connect-to "${host}:80:${GATEWAY_ADDRESS}:${HTTP_PORT}" \
   "http://${host}/post" 2>/dev/null || true)"
 
-if [[ "$code_post" == "403" || "$code_post" == "000" || "$code_post" == "504" ]]; then
+if [[ "$code_post" == "403" ]]; then
   pass "X01-B" "POST /post bloqueado por CiliumNetworkPolicy L7 (status ${code_post})"
 else
-  fail "X01-B" "POST /post debería ser bloqueado (403/timeout)" "status=${code_post}"
+  fail "X01-B" "POST /post debería responder 403" "status=${code_post}"
 fi
 
 echo

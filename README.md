@@ -189,7 +189,7 @@ flowchart LR
 ├── istio/                             Implementación Istio (istioctl, perfil ambient)
 ├── kong/                              Implementación Kong (KIC + Kong Gateway DB-less)
 ├── traefik/                           Implementación Traefik (proveedor kubernetesgateway)
-└── cilium/                            Implementación Cilium (en desarrollo)
+└── cilium/                            Implementación Cilium (cilium-cli, eBPF, sin kube-proxy)
 ```
 
 Cada carpeta de implementación sigue la misma estructura:
@@ -394,7 +394,7 @@ Fallos: 0/7
 | [Traefik](traefik/README.md) | Integrada | Reverse proxy / API gateway | Traefik v3.7.14 | `kubectl apply -f traefik/instalacion/` | `traefik` (declarada en el overlay) | Puertos de listener 8000/8443 | 7/7 |
 | [Kong](kong/README.md) | Integrada | API gateway | KIC 3.5.0 + Kong Gateway 3.8.0 (DB-less) | `kubectl apply --server-side=true -f kong/instalacion/` | `kong` (declarada en el overlay, unmanaged) | Anotación `konghq.com/publish-service` | 6/7 (E06 falla) |
 | [Istio](istio/README.md) | Integrada | Service mesh | Istio 1.31.2, perfil `ambient` | `istioctl install -f istio/instalacion/istio.yaml` | `istio` (creada por istiod) | Solo `gatewayClassName` | 7/7 + 5/5 extensiones |
-| [Cilium](cilium/README.md) | En desarrollo en `equipo/cilium` | CNI con eBPF | | | | | |
+| [Cilium](cilium/README.md) | Integrada | CNI con eBPF + Envoy | Cilium 1.20.3 | `cilium install --version 1.20.3 -f cilium/instalacion/cilium.yaml` | `cilium` (creada por cilium-operator) | Solo `gatewayClassName` | 7/7 + 2/2 extensión L7 |
 
 ### 7.1 Traefik
 
@@ -530,33 +530,59 @@ Resultado: 7/7 escenarios en `PASS` (también con las extensiones aplicadas) y
 
 ### 7.4 Cilium
 
-En desarrollo en la rama `equipo/cilium`; aún no integrado en `main`. La
-documentación se publicará en [`cilium/README.md`](cilium/README.md) según
-[`plantillas/PLANTILLA-implementacion.md`](plantillas/PLANTILLA-implementacion.md).
+Documentación completa: [`cilium/README.md`](cilium/README.md).
+
+Cilium es un CNI basado en eBPF, graduado de la CNCF. Reemplaza a `kube-proxy` y
+actúa como controlador de Gateway API con Envoy como proxy L7.
+
+| Componente | Función |
+|---|---|
+| `cilium` (DaemonSet) | Agente: CNI, balanceo de Services con eBPF y servidor xDS para Envoy. |
+| `cilium-operator` | Traduce Gateway y HTTPRoute a `CiliumEnvoyConfig` y crea el Service `cilium-gateway-gateway`. |
+| `cilium-envoy` (DaemonSet) | Envoy compartido por todos los Gateways del nodo. |
+
+| Archivo | Contenido |
+|---|---|
+| [`instalacion/cilium.yaml`](cilium/instalacion/cilium.yaml) | Configuración de `cilium-cli`: `kubeProxyReplacement`, `gatewayAPI.enabled`, anuncios L2. |
+| [`instalacion/lb-ipam.yaml`](cilium/instalacion/lb-ipam.yaml) | `CiliumLoadBalancerIPPool` y `CiliumL2AnnouncementPolicy`: IP del Gateway sin `minikube tunnel`. |
+| [`manifests/kustomization.yaml`](cilium/manifests/kustomization.yaml) | Solo reemplaza `gatewayClassName: cilium`. |
+| [`manifests/extensiones/`](cilium/manifests/extensiones) | X01: `CiliumNetworkPolicy` L7 sobre `httpbin-v1`. |
+
+Comportamiento específico:
+
+- Requiere clúster sin CNI ni `kube-proxy`, y los CRDs de Gateway API
+  instalados antes que Cilium. Cilium 1.20 usa Gateway API v1.6; versiones
+  anteriores (1.16) piden `TLSRoute` v1alpha2, que v1.6.2 ya no sirve.
+- El tráfico llega a Envoy por TPROXY. Con el driver `docker` de minikube no
+  se entregó al socket de Envoy; se usa `--driver=kvm2`.
+
+Resultado: 7/7 escenarios en `PASS` y 2/2 en la extensión L7, sobre minikube
+v1.38.1 (kvm2) / Kubernetes v1.35.1. Evidencias en
+[`cilium/evidencias/`](cilium/evidencias).
 
 ## 8. Comparativa de resultados
 
-| ID | Funcionalidad | Traefik | Kong | Istio |
-|---|---|---|---|---|
-| E01 | Enrutamiento por hostname y path | PASS | PASS | PASS |
-| E02 | Matching por header | PASS | PASS | PASS |
-| E03 | Pesos 80/20 | PASS (20/100) | PASS (21/100) | PASS (21/100) |
-| E04 | Modificación de headers | PASS | PASS | PASS |
-| E05 | URLRewrite (Extended) | PASS | PASS | PASS |
-| E06 | Redirect HTTP a HTTPS | PASS | FAIL (200) | PASS |
-| E07 | Terminación TLS | PASS | PASS | PASS |
-| Total | | 7/7 | 6/7 | 7/7 |
+| ID | Funcionalidad | Traefik | Kong | Istio | Cilium |
+|---|---|---|---|---|---|
+| E01 | Enrutamiento por hostname y path | PASS | PASS | PASS | PASS |
+| E02 | Matching por header | PASS | PASS | PASS | PASS |
+| E03 | Pesos 80/20 | PASS (20/100) | PASS (21/100) | PASS (21/100) | PASS (22/100) |
+| E04 | Modificación de headers | PASS | PASS | PASS | PASS |
+| E05 | URLRewrite (Extended) | PASS | PASS | PASS | PASS |
+| E06 | Redirect HTTP a HTTPS | PASS | FAIL (200) | PASS | PASS |
+| E07 | Terminación TLS | PASS | PASS | PASS | PASS |
+| Total | | 7/7 | 6/7 | 7/7 | 7/7 |
 
-| Criterio | Traefik | Kong | Istio |
-|---|---|---|---|
-| Arquitectura | Un proceso: control y datos | Un pod: KIC (control) + proxy Kong (datos) | istiod + Envoy por Gateway + ztunnel/istio-cni |
-| Proxy | Traefik | Kong (OpenResty/Nginx) | Envoy |
-| GatewayClass | Declarada en el overlay | Declarada en el overlay (unmanaged) | Creada por istiod |
-| Ajuste del Gateway | Puertos 8000/8443 | Anotación `publish-service` | Ninguno |
-| Aprovisionamiento del data plane | Estático (Deployment propio) | Estático (Deployment propio) | Automático por Gateway |
-| Extensiones demostradas | Ninguna (solo recursos estándar) | `KongPlugin` rate limiting vía `ExtensionRef` | AuthorizationPolicy, JWT, mTLS ambient, waypoint, GAMMA |
-| Consumo y complejidad | Bajo | Medio | Alto |
-| Caso de uso | Entrada HTTP ligera | Gestión de APIs, plugins, cuotas | Mesh con mTLS y políticas norte-sur y este-oeste |
+| Criterio | Traefik | Kong | Istio | Cilium |
+|---|---|---|---|---|
+| Arquitectura | Un proceso: control y datos | Un pod: KIC (control) + proxy Kong (datos) | istiod + Envoy por Gateway + ztunnel/istio-cni | Agente eBPF + operador + Envoy compartido por nodo |
+| Proxy | Traefik | Kong (OpenResty/Nginx) | Envoy | Envoy (DaemonSet `cilium-envoy`) |
+| GatewayClass | Declarada en el overlay | Declarada en el overlay (unmanaged) | Creada por istiod | Creada por cilium-operator |
+| Ajuste del Gateway | Puertos 8000/8443 | Anotación `publish-service` | Ninguno | Ninguno |
+| Aprovisionamiento del data plane | Estático (Deployment propio) | Estático (Deployment propio) | Automático por Gateway | Service por Gateway; Envoy compartido |
+| Extensiones demostradas | Ninguna (solo recursos estándar) | `KongPlugin` rate limiting vía `ExtensionRef` | AuthorizationPolicy, JWT, mTLS ambient, waypoint, GAMMA | `CiliumNetworkPolicy` L7 |
+| Consumo y complejidad | Bajo | Medio | Alto | Medio (reemplaza CNI y kube-proxy) |
+| Caso de uso | Entrada HTTP ligera | Gestión de APIs, plugins, cuotas | Mesh con mTLS y políticas norte-sur y este-oeste | Red del clúster con eBPF y políticas L3-L7 |
 
 ## 9. Componentes y herramientas utilizados
 
@@ -576,6 +602,8 @@ documentación se publicará en [`cilium/README.md`](cilium/README.md) según
 | Kong Gateway / KIC | 3.8.0 / 3.5.0 | Controlador de Gateway API (sección 7.2). |
 | Istio / istioctl | 1.31.2 | Controlador de Gateway API y service mesh (sección 7.3). |
 | Envoy | Incluido en Istio 1.31.2 | Proxy de `gateway-istio` y `waypoint`. |
+| Cilium / cilium-cli | 1.20.3 / v0.20.1 | CNI, reemplazo de kube-proxy y controlador de Gateway API (sección 7.4). |
+| minikube kvm2 | v1.38.1 (libvirt) | Driver usado para Cilium: VM con kernel propio. |
 | GitHub Actions | `ubuntu-24.04`, `actions/checkout@v7` | Validación automática de Pull Requests. |
 | kubeconform | v0.8.0 | Validación de esquemas de los manifiestos renderizados, con catálogo de CRDs de datreeio. |
 | ShellCheck | | Análisis estático de `scripts/*.sh`. |
@@ -614,6 +642,10 @@ kubectl -n kong get pods -l app.kubernetes.io/name=kong        # 2/2 Running
 # Istio
 istioctl install -f istio/instalacion/istio.yaml -y
 kubectl -n istio-system get pods
+
+# Cilium (clúster sin CNI ni kube-proxy, driver kvm2; ver cilium/README.md)
+cilium install --version 1.20.3 -f cilium/instalacion/cilium.yaml --wait
+kubectl apply -f cilium/instalacion/lb-ipam.yaml
 ```
 
 ### 10.3 Base común, escenarios y pruebas
@@ -644,6 +676,7 @@ GATEWAY_ADDRESS=127.0.0.1 HTTP_PORT=8080 HTTPS_PORT=8443 scripts/verificar.sh
 | Traefik | `traefik/traefik` |
 | Kong | `kong/kong-proxy` |
 | Istio | `gateway-lab/gateway-istio` |
+| Cilium | `gateway-lab/cilium-gateway-gateway` (IP de LB IPAM; no admite `port-forward`, no tiene pods) |
 
 Prueba manual de un escenario:
 
@@ -661,6 +694,10 @@ kubectl apply -f kong/manifests/extension-ratelimit.yaml
 # Istio: X01-X03
 kubectl apply -k istio/manifests/extensiones
 istio/manifests/extensiones/verificar.sh
+
+# Cilium: X01 CiliumNetworkPolicy L7
+kubectl apply -k cilium/manifests/extensiones
+cilium/manifests/extensiones/verificar.sh
 ```
 
 ### 10.6 Uso de la base en un clúster propio
@@ -774,6 +811,7 @@ kubectl delete -k <implementacion>/manifests
 kubectl delete -f traefik/instalacion/                 # Traefik
 kubectl delete -f kong/instalacion/                    # Kong
 istioctl uninstall --purge -y && kubectl delete namespace istio-system   # Istio
+kubectl delete -f cilium/instalacion/lb-ipam.yaml && cilium uninstall    # Cilium
 
 # CRDs de Gateway API (borra todos los recursos de Gateway API del clúster)
 kubectl delete -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
@@ -793,7 +831,7 @@ Con las extensiones de Istio aplicadas, el primer paso es
 | Istio | Juan Camilo Melo, Juan Felipe Garzón | `equipo/istio` |
 | Kong | Santiago Gómez Robledo, Juan José Arias | `equipo/kong` |
 | Traefik | Esteban Guarín Valencia, Valeria Ortiz Zulueta | `equipo/traefik` |
-| Cilium | En desarrollo | `equipo/cilium` |
+| Cilium | Juan David Pacheco Vargas, Angdicode | `equipo/cilium` |
 
 Mantenimiento del repositorio y code owner: `@Melo088`.
 

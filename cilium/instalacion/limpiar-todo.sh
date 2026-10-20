@@ -29,6 +29,7 @@ echo
 echo "============================================================"
 echo " [PASO 3/4] Desinstalando Cilium del Clúster"
 echo "============================================================"
+kubectl delete -f "${REPO_ROOT}/cilium/instalacion/lb-ipam.yaml" --ignore-not-found=true || true
 if command -v cilium >/dev/null 2>&1; then
   cilium uninstall || true
 else
@@ -42,9 +43,8 @@ echo "============================================================"
 echo "El entorno de Kubernetes ha sido limpiado exitosamente."
 echo
 echo "Acciones opcionales recomendadas para apagar el clúster local:"
-echo "  1. Cerrar la terminal que esté ejecutando 'minikube tunnel' (Ctrl + C)."
-echo "  2. Detener la máquina virtual de Minikube:"
+echo "  1. Detener la máquina virtual de Minikube:"
 echo "       minikube stop"
-echo "  3. Si deseas eliminar el clúster por completo para liberar espacio en disco:"
+echo "  2. Si deseas eliminar el clúster por completo para liberar espacio en disco:"
 echo "       minikube delete"
 echo "============================================================"

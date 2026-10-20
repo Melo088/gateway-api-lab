@@ -1,10 +1,14 @@
 $ kubectl get crd | grep gateway.networking.k8s.io
-backendtlspolicies.gateway.networking.k8s.io   2026-10-18T19:00:00Z
-gatewayclasses.gateway.networking.k8s.io       2026-10-18T19:00:00Z
-gateways.gateway.networking.k8s.io             2026-10-18T19:00:00Z
-grpcroutes.gateway.networking.k8s.io           2026-10-18T19:00:00Z
-httproutes.gateway.networking.k8s.io           2026-10-18T19:00:00Z
-referencegrants.gateway.networking.k8s.io      2026-10-18T19:00:00Z
-tcproutes.gateway.networking.k8s.io            2026-10-18T19:00:00Z
-tlsroutes.gateway.networking.k8s.io            2026-10-18T19:00:00Z
-udproutes.gateway.networking.k8s.io            2026-10-18T19:00:00Z
+backendtlspolicies.gateway.networking.k8s.io   2026-10-19T22:45:30Z
+gatewayclasses.gateway.networking.k8s.io       2026-10-19T22:45:30Z
+gateways.gateway.networking.k8s.io             2026-10-19T22:45:30Z
+grpcroutes.gateway.networking.k8s.io           2026-10-19T22:45:30Z
+httproutes.gateway.networking.k8s.io           2026-10-19T22:45:31Z
+listenersets.gateway.networking.k8s.io         2026-10-19T22:45:31Z
+referencegrants.gateway.networking.k8s.io      2026-10-19T22:45:31Z
+tcproutes.gateway.networking.k8s.io            2026-10-19T22:45:31Z
+tlsroutes.gateway.networking.k8s.io            2026-10-19T22:45:31Z
+udproutes.gateway.networking.k8s.io            2026-10-19T22:45:31Z
+
+$ kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath={.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}
+v1.6.2
