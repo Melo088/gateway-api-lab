@@ -8,7 +8,7 @@ Este documento sirve como **guía de referencia técnica y pedagógica exhaustiv
 1. [`cilium/manifests/kustomization.yaml`](#1-ciliummanifestskustomizationyaml)
 2. [`cilium/manifests/extensiones/x01-l7-policy.yaml`](#2-ciliummanifestsextensionesx01-l7-policyyaml)
 3. [`cilium/manifests/extensiones/verificar.sh`](#3-ciliummanifestsextensionesverificarsh)
-4. [`cilium/instalacion/values.yaml`](#4-ciliuminstalacionvaluesyaml)
+4. [`cilium/instalacion/cilium.yaml` y `lb-ipam.yaml`](#4-ciliuminstalacionciliumyaml-y-lb-ipamyaml)
 5. [`cilium/instalacion/instalar-cilium.sh`](#5-ciliuminstalacioninstalar-ciliumsh)
 6. [`cilium/instalacion/desplegar-todo.sh`](#6-ciliuminstalaciondesplegar-todosh)
 
@@ -160,35 +160,46 @@ Automatiza la comprobación de la extensión de seguridad L7 ejecutando pruebas 
 
 ---
 
-## 4. `cilium/instalacion/values.yaml`
+## 4. `cilium/instalacion/cilium.yaml` y `lb-ipam.yaml`
 
 ### Rol en el Proyecto
-Contiene la configuración de Helm embebida que Cilium CLI lee al instalarse.
+`cilium.yaml` es la configuración que lee `cilium-cli` (`cilium install -f`); `lb-ipam.yaml` da IPs a los Services `LoadBalancer`.
 
-### Análisis Línea por Línea
-
-```yaml
-1: kubeProxyReplacement: true
-```
-* Reemplaza por completo el binario `kube-proxy` y todas las tablas `iptables` de Kubernetes por mapas hash BPF en memoria en el kernel Linux.
+### `cilium.yaml`
 
 ```yaml
-2: gatewayAPI:
-3:   enabled: true
+kubeProxyReplacement: true
+k8sServiceHost: auto
 ```
-* Activa el controlador reconciliador de `GatewayClass`, `Gateway` y `HTTPRoute` en Cilium Operator y levanta los proxies Envoy integrados.
+* Cilium reemplaza a `kube-proxy` con mapas eBPF; es requisito del controlador de Gateway API.
+* Sin `kube-proxy`, la dirección del API Server se obtiene del ConfigMap `cluster-info` de kubeadm.
 
 ```yaml
-4: bpf:
-5:   masquerade: true
+gatewayAPI:
+  enabled: true
 ```
-* Realiza el enmascaramiento de direcciones IP (SNAT) directamente en eBPF, eliminando la dependencia de `iptables-nft`.
+* Activa el controlador de `GatewayClass`, `Gateway` y `HTTPRoute` en `cilium-operator`; el DaemonSet `cilium-envoy` recibe los listeners por xDS.
 
 ```yaml
-6: operator:
-7:   replicas: 1
+l2announcements:
+  enabled: true
+externalIPs:
+  enabled: true
+k8sClientRateLimit:
+  qps: 10
+  burst: 20
 ```
-* Ajusta la cantidad de réplicas del operador a 1 para optimizar el consumo de recursos en entornos de desarrollo y Minikube.
+* El agente responde ARP por las IPs de los Services `LoadBalancer`; los anuncios usan Leases, por eso se sube el límite de peticiones al API Server.
+
+```yaml
+operator:
+  replicas: 1
+```
+* Una réplica del operador, suficiente en un clúster de un nodo.
+
+### `lb-ipam.yaml`
+* `CiliumLoadBalancerIPPool`: rango 192.168.39.200-220, dentro de la subred por defecto del driver kvm2.
+* `CiliumL2AnnouncementPolicy`: anuncia esas IPs por ARP en las interfaces `eth*` del nodo.
 
 ---
 
@@ -198,9 +209,9 @@ Contiene la configuración de Helm embebida que Cilium CLI lee al instalarse.
 Descarga el CLI de Cilium oficial e instala el CNI en el clúster activo sin requerir que el usuario tenga instalado el cliente de Helm.
 
 ### Puntos Clave del Script:
-* Detecta si `cilium` ya está en `$PATH`; si no, consulta la versión estable oficial y descarga el archivo comprimido para la arquitectura del procesador (`amd64` o `arm64`).
+* Detecta si `cilium` ya está en `$PATH`; si no, descarga la versión fijada (`CILIUM_CLI_VERSION`, v0.20.1) el archivo comprimido para la arquitectura del procesador (`amd64` o `arm64`).
 * Comprueba si el directorio `/usr/local/bin` tiene permisos de escritura; si no, lo instala de forma no privilegiada en `~/.local/bin/`.
-* Ejecuta `cilium install` inyectando `values.yaml` y ejecuta `cilium status --wait` para garantizar que todos los pods estén en estado `Running` antes de continuar.
+* Instala los CRDs de Gateway API si faltan, ejecuta `cilium install --version 1.20.3` con `cilium.yaml`, aplica `lb-ipam.yaml` y ejecuta `cilium status --wait` para garantizar que todos los pods estén en estado `Running` antes de continuar.
 
 ---
 

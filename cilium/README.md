@@ -4,9 +4,9 @@
 |---|---|
 | Integrantes | Equipo Cilium |
 | Rama | `equipo/cilium` |
-| Versión del controlador | Cilium v1.16.2 (Cilium CLI v0.20.1, sin cliente Helm externo) |
+| Versión del controlador | Cilium v1.20.3 (Envoy v1.38.6), instalado con `cilium-cli` v0.20.1 |
 | Versión de Gateway API | v1.6.2 (Canal Standard) |
-| Clúster y versión de Kubernetes | Minikube v1.38.1 / Kubernetes v1.31.0 (driver Docker) |
+| Clúster y versión de Kubernetes | Minikube v1.38.1 (driver kvm2, kernel 6.6.95) / Kubernetes v1.35.1, sin kube-proxy |
 
 ---
 
@@ -64,14 +64,14 @@ flowchart LR
 
 ## 3. Requisitos
 
-* **Kubernetes**: v1.31 o superior (utilizado: v1.31.0 sobre Minikube v1.38.1 con driver Docker).
-* **Kernel Linux**: 5.4 o superior con soporte eBPF activo.
-* **CRDs de Gateway API**: v1.6.2 (Canal Standard).
-* **Herramientas de Cliente**:
+* **Kubernetes**: v1.31 o superior (utilizado: v1.35.1 sobre Minikube v1.38.1 con driver **kvm2**).
+* **Driver de minikube**: `kvm2` (VM con kernel propio). Con el driver `docker` el Gateway queda `Programmed` pero las conexiones a Envoy expiran (sección 9).
+* **Kernel Linux**: 5.4 o superior con soporte eBPF y módulos TPROXY (`xt_TPROXY`, `xt_socket`).
+* **CRDs de Gateway API**: v1.6.2 (Canal Standard). Cilium 1.20 usa Gateway API v1.6 y necesita `TLSRoute` v1, incluido en ese canal.
+* **Herramientas de cliente**:
   * `kubectl` v1.31.0+.
-  * `cilium` CLI v0.20.1+ (no requiere cliente `helm` en el host).
-  * `minikube tunnel` ejecutándose en segundo plano para asignar IP externa.
-* **Recursos Mínimos**: 2 vCPUs y 4 GB de memoria RAM asignados a Minikube.
+  * `cilium` CLI v0.20.1 (instalador propio de Cilium; no se usa el cliente `helm`).
+* **Recursos mínimos**: 2 vCPUs y 4 GB de memoria RAM.
 
 Evidencias de requisitos:
 * Estado del clúster y nodos: [`evidencias/01-cluster-nodos.txt`](evidencias/01-cluster-nodos.txt).
@@ -81,41 +81,44 @@ Evidencias de requisitos:
 
 ## 4. Instalación (Sin Helm)
 
-Para asegurar la máxima reproducibilidad y mantener un enfoque GitOps sin dependencias de clientes externos de Helm, la instalación se realiza mediante el binario oficial `cilium-cli` o mediante los scripts automatizados provistos en [`instalacion/`](instalacion/).
+La instalación usa `cilium-cli`, el instalador propio de Cilium (igual que `istioctl` en Istio), con la configuración versionada en [`instalacion/cilium.yaml`](instalacion/cilium.yaml). El orden importa: los CRDs de Gateway API deben existir antes de instalar Cilium, o el operador no registra la `GatewayClass`.
 
-### Paso 1: Preparación del Clúster
+### Paso 1: Clúster sin CNI ni kube-proxy
 ```bash
-minikube start --network-plugin=cni --memory=4096 --cpus=2
+minikube start --driver=kvm2 --cpus=2 --memory=4096 \
+  --network-plugin=cni --cni=false \
+  --extra-config=kubeadm.skip-phases=addon/kube-proxy
 ```
-*En otra terminal, iniciar el túnel de red para el Service LoadBalancer:*
-```bash
-minikube tunnel
-```
+El nodo queda `NotReady` hasta que Cilium actúa como CNI. Sin `kube-proxy`, Cilium asume el balanceo de Services con eBPF (`kubeProxyReplacement: true`).
 
-### Paso 2: Instalación de CRDs de Gateway API
+### Paso 2: CRDs de Gateway API
 ```bash
 kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
 ```
 
-### Paso 3: Instalación de Cilium CNI con Gateway API
+### Paso 3: Cilium con Gateway API
 ```bash
-cilium install \
-  --version 1.16.2 \
-  -f cilium/instalacion/values.yaml \
-  --wait
-```
-*O mediante el script provisto:*
-```bash
-cilium/instalacion/instalar-cilium.sh
-```
-
-### Paso 4: Verificación del Estado
-```bash
+cilium install --version 1.20.3 -f cilium/instalacion/cilium.yaml --wait
 cilium status --wait
 ```
+
+| Clave de `cilium.yaml` | Función |
+|---|---|
+| `kubeProxyReplacement: true` | Reemplazo de kube-proxy con eBPF; requisito del controlador de Gateway API. |
+| `k8sServiceHost: auto` | Sin kube-proxy, lee la dirección del API Server del ConfigMap `cluster-info`. |
+| `gatewayAPI.enabled: true` | Activa el controlador (`io.cilium/gateway-controller`) y la `GatewayClass` `cilium`. |
+| `l2announcements.enabled`, `externalIPs.enabled` | Cilium anuncia por ARP las IPs de los Services `LoadBalancer`. |
+| `k8sClientRateLimit` | Límite de peticiones al API Server; los anuncios L2 usan Leases. |
+
+### Paso 4: IPs para Services LoadBalancer (LB IPAM)
+```bash
+kubectl apply -f cilium/instalacion/lb-ipam.yaml
+```
+[`instalacion/lb-ipam.yaml`](instalacion/lb-ipam.yaml) define un `CiliumLoadBalancerIPPool` (192.168.39.200-220, subred por defecto del driver kvm2; ajustar a la de `minikube ip`) y una `CiliumL2AnnouncementPolicy`. Así el Service del Gateway recibe una IP alcanzable desde el host sin `minikube tunnel` ni MetalLB, y `scripts/verificar.sh` funciona sin variables.
+
 Evidencia de instalación: [`evidencias/03-cilium-status.txt`](evidencias/03-cilium-status.txt).
 
-Guía detallada de instalación manual vs automatizada: [`instalacion/paso-a-paso-instalacion.md`](instalacion/paso-a-paso-instalacion.md).
+Script equivalente: [`instalacion/instalar-cilium.sh`](instalacion/instalar-cilium.sh). Guía paso a paso: [`instalacion/paso-a-paso-instalacion.md`](instalacion/paso-a-paso-instalacion.md).
 
 ---
 
@@ -150,8 +153,8 @@ Desglose técnico de los manifiestos: [`manifests/README.md`](manifests/README.m
 
 ### Recursos Aprovisionados por Cilium
 Al aplicar el overlay (`kubectl apply -k cilium/manifests`), `cilium-operator` detecta el Gateway y crea:
-* Un `Service` de tipo `LoadBalancer` en `gateway-lab` llamado `cilium-gateway-gateway` con puertos 80 y 443.
-* La programación de los listeners en la instancia local de Envoy.
+* Un `Service` de tipo `LoadBalancer` en `gateway-lab` llamado `cilium-gateway-gateway` con puertos 80 y 443; LB IPAM le asigna `192.168.39.200`, que se publica en `status.addresses` del Gateway.
+* Un `CiliumEnvoyConfig` con los listeners, rutas y clusters que el agente envía por xDS al DaemonSet `cilium-envoy`.
 
 Evidencia de Gateway programado: [`evidencias/04-gateway-programmed.txt`](evidencias/04-gateway-programmed.txt).
 
@@ -162,11 +165,11 @@ Evidencia de Gateway programado: [`evidencias/04-gateway-programmed.txt`](eviden
 Resultado oficial de la ejecución de [`scripts/verificar.sh`](../scripts/verificar.sh) contra el Gateway de Cilium:
 
 ```text
-Gateway: gateway-lab/gateway  Dirección: 10.96.150.20  HTTP: 80  HTTPS: 443
+Gateway: gateway-lab/gateway  Dirección: 192.168.39.200  HTTP: 80  HTTPS: 443
 
 PASS  E01  Enrutamiento por hostname y path
 PASS  E02  Matching por header x-version
-PASS  E03  Pesos 80/20 (19/100 hacia v2)
+PASS  E03  Pesos 80/20 (22/100 hacia v2)
 PASS  E04  Modificación de headers de petición y respuesta
 PASS  E05  Rewrite /api/<ruta> hacia /<ruta>
 PASS  E06  Redirección HTTP a HTTPS (301)
@@ -183,7 +186,7 @@ Evidencia completa: [`evidencias/05-verificar-escenarios.txt`](evidencias/05-ver
 |---|---|---|---|---|
 | **E01** | Enrutamiento por Host y Prefijo | Core | **PASS** | `httpbin-v1` responde HTTP 200 en `/get`. |
 | **E02** | Matching por Header `x-version: v2` | Core | **PASS** | Con el header viaja a `httpbin-v2`; sin el header viaja a `httpbin-v1`. |
-| **E03** | Distribución de Pesos 80/20 | Core | **PASS** | 19 de 100 peticiones derivadas a `v2` (rango esperado: 8-35). Balanceo uniforme mediante Envoy. |
+| **E03** | Distribución de Pesos 80/20 | Core | **PASS** | 22 de 100 peticiones derivadas a `v2` (rango esperado: 8-35). |
 | **E04** | Modificación de Headers (`RequestHeaderModifier` / `ResponseHeaderModifier`) | Core / Extended | **PASS** | Inyecta `x-gateway-lab: request` hacia el pod y `x-gateway-lab: response` hacia el cliente. |
 | **E05** | Reescritura de Ruta (`URLRewrite`) | Extended | **PASS** | Reemplaza `/api/<ruta>` por `/<ruta>` mediante `ReplacePrefixMatch`. |
 | **E06** | Redirección HTTP a HTTPS | Core | **PASS** | Devuelve código 301 con header `Location: https://redirect.lab.local/...`. |
@@ -193,9 +196,10 @@ Evidencia completa: [`evidencias/05-verificar-escenarios.txt`](evidencias/05-ver
 
 ## 7. Comportamiento Específico
 
-* **Soporte Nativo de Filtros Extended**: Cilium soporta plenamente `URLRewrite` y `ResponseHeaderModifier` gracias a su integración con Envoy, superando a controladores basados en proxies más antiguos.
-* **Preservación de IP de Origen (TPROXY)**: A diferencia de otros controladores que enmascaran la IP del cliente (SNAT), Cilium preserva la IP real del cliente en `X-Forwarded-For` de forma transparente.
-* **Bypass de iptables**: El tráfico entre el Gateway y los pods de aplicación no atraviesa cadenas de filtrado en el espacio de usuario, reduciendo la latencia de respuesta en un 15-20%.
+* **Envoy fuera del agente**: Cilium no despliega un proxy por Gateway; el DaemonSet `cilium-envoy` atiende todos los Gateways del nodo y recibe la configuración del agente por xDS (`CiliumEnvoyConfig`).
+* **TPROXY hacia Envoy**: el Service del Gateway no tiene endpoints reales; eBPF marca el tráfico y una regla `TPROXY` lo entrega al listener de Envoy (`127.0.0.1:<puerto proxy>`). Envoy conecta con los pods desde la IP de identidad `reserved:ingress`.
+* **IP de origen**: Envoy añade la IP real del cliente en `X-Forwarded-For` (en la prueba, `192.168.39.1`, el host).
+* **Filtros Extended**: `URLRewrite` y `ResponseHeaderModifier` funcionan (E04, E05).
 
 ---
 
@@ -215,13 +219,15 @@ cilium/manifests/extensiones/verificar.sh
 
 Salida registrada:
 ```text
-Verificando extensión Cilium L7 en: 10.96.150.20:80
+Verificando extensión Cilium L7 en: 192.168.39.200:80
 
 PASS  X01-A  GET /get permitido por CiliumNetworkPolicy L7 (status 200)
 PASS  X01-B  POST /post bloqueado por CiliumNetworkPolicy L7 (status 403)
 
 Fallos extensión: 0/2
 ```
+
+Control: sin la `CiliumNetworkPolicy` aplicada, el mismo `POST /post` responde `200`.
 Evidencia de la extensión: [`evidencias/06-extension-l7.txt`](evidencias/06-extension-l7.txt).
 
 ---
@@ -230,13 +236,16 @@ Evidencia de la extensión: [`evidencias/06-extension-l7.txt`](evidencias/06-ext
 
 | Síntoma | Causa Probable | Solución |
 |---|---|---|
-| Gateway en `PROGRAMMED: False` y Service en `<pending>` | Minikube no asigna IP externa sin túnel activo | Ejecutar `minikube tunnel` en una terminal dedicada o usar `port-forward` temporal. |
+| Service `cilium-gateway-gateway` en `<pending>` | Falta el pool de LB IPAM | Aplicar `instalacion/lb-ipam.yaml` con un rango de la subred de `minikube ip`. |
+| Gateway `Programmed` pero todas las peticiones expiran (`000`); Envoy sin conexiones (`listener_downstream_cx_total` en 0) | Driver `docker` de minikube: el tráfico marcado por la regla `TPROXY` no llega al socket de Envoy (observado con kernel de host 7.1; con `bpf.tproxy=true` falla la vuelta desde los pods) | Usar `--driver=kvm2`. |
+| Pods de Cilium en `ImagePullBackOff` en la VM kvm2 | La VM no tiene salida a internet (NAT de libvirt bloqueado por el firewall del host) | Corregir la red `default` de libvirt, o `docker pull` en el host y `minikube image load` (con `image.useDigest: false`). |
+| `503` en las primeras peticiones | Pods de httpbin aún arrancando | Esperar `kubectl -n gateway-lab wait --for=condition=Available deployment --all`. |
 | Error `no matches for kind "Gateway"` | CRDs de Gateway API no instalados | Aplicar `standard-install.yaml` v1.6.2 con `--server-side=true`. |
 | Handshake TLS falla en E07 | Secret `gateway-tls` ausente | Ejecutar `scripts/crear-certificado.sh` antes de aplicar los manifiestos. |
-| Error `namespaces "cilium-secrets" not found` | `secretsNamespace.create: false` en `values.yaml` sin namespace previo | Omitir `secretsNamespace` en `values.yaml` para usar el namespace del Gateway. |
+| Error `namespaces "cilium-secrets" not found` | `secretsNamespace.create: false` en `cilium.yaml` sin namespace previo | Omitir `secretsNamespace` en `cilium.yaml`. |
 | Error `cannot reuse a name that is still in use` | Intento fallido previo dejó release en estado roto | Ejecutar `cilium uninstall` antes de reintentar la instalación. |
-| `cilium-operator` en CrashLoopBackOff (`no matches for TLSRoute v1alpha2`) | Gateway API v1.6.2 deshabilita `v1alpha2` de `TLSRoute` (`served: false`) | Parchar el CRD `tlsroutes` para habilitar `served: true` en `v1alpha2`. |
-| Cilium Agent en estado de error | Conflicto con `kube-proxy` | Iniciar Minikube con `--network-plugin=cni` para deshabilitar el CNI básico. |
+| `cilium-operator` en CrashLoopBackOff (`no matches for TLSRoute v1alpha2`) | Cilium 1.16 usa Gateway API v1.1 (`TLSRoute` v1alpha2), que v1.6.2 ya no sirve | Usar Cilium 1.20.3 (Gateway API v1.6). No modificar el CRD compartido `tlsroutes`. |
+| Cilium Agent en estado de error | CNI previo o `kube-proxy` en el clúster | Iniciar minikube con `--network-plugin=cni --cni=false --extra-config=kubeadm.skip-phases=addon/kube-proxy`. |
 | Bloqueo de peticiones legítimas en extensión L7 | Política L7 desconoce la identidad `reserved:ingress` de Envoy | Utilizar `fromEntities: [ingress, cluster, host]` en `CiliumNetworkPolicy`. |
 
 Guía detallada de solución de problemas con los 10 casos analizados a fondo: [`docs/04-problemas-encontrados-y-soluciones.md`](docs/04-problemas-encontrados-y-soluciones.md).
@@ -258,11 +267,12 @@ O paso a paso manualmente:
 kubectl delete -k cilium/manifests/extensiones --ignore-not-found=true
 kubectl delete -k cilium/manifests --ignore-not-found=true
 
-# 2. Desinstalar Cilium del clúster
+# 2. Pool de LB IPAM y Cilium
+kubectl delete -f cilium/instalacion/lb-ipam.yaml --ignore-not-found=true
 cilium uninstall
 
-# 3. Detener Minikube y cerrar minikube tunnel (Ctrl+C en su terminal)
-minikube stop
+# 3. Clúster
+minikube delete
 ```
 
 ---
@@ -270,14 +280,15 @@ minikube stop
 ## 11. Análisis Técnico y FinOps
 
 ### Ventajas
-1. **Rendimiento eBPF**: Elimina la sobrecarga de `iptables`, ofreciendo latencias menores y menor consumo de CPU bajo alta concurrencia.
+1. **Rendimiento eBPF**: el balanceo de Services se hace con eBPF sin kube-proxy (no se midió latencia en este laboratorio).
 2. **Plataforma Todo en Uno**: Unifica CNI, enrutamiento East-West, Gateway North-South y seguridad en un solo stack tecnológico.
 3. **Optimización FinOps**: El modo compartido permite ahorrar hasta un 95% en costes fijos de balanceadores de nube (NLB/ALB) y el modo Direct Server Return (DSR) reduce costes de transferencia de datos.
 4. **Seguridad Avanzada**: Inspección granular L7 con `CiliumNetworkPolicy` sin necesidad de inyectar sidecars invasivos.
 
 ### Limitaciones
 1. **Requerimientos de Kernel**: Requiere kernels de Linux modernos (>= 5.4) con soporte eBPF completo y permisos de root/CAP_SYS_ADMIN para cargar programas en el kernel.
-2. **Curva de Aprendizaje**: La depuración de programas eBPF y mapas BPF requiere familiaridad con el CLI de Cilium (`cilium bpf`, `cilium monitor`).
+2. **Curva de Aprendizaje**: La depuración de programas eBPF y mapas BPF requiere familiaridad con el CLI de Cilium (`cilium-dbg monitor`, `cilium-dbg envoy admin`).
+3. **Dependencia del entorno**: el reenvío TPROXY hacia Envoy no funcionó con el driver `docker` de minikube; se requirió una VM (kvm2).
 
 Análisis financiero y de consumo detallado: [`docs/03-finops-costos-y-consumo-de-recursos.md`](docs/03-finops-costos-y-consumo-de-recursos.md).
 

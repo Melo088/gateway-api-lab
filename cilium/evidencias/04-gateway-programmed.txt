@@ -1,53 +1,34 @@
-$ kubectl -n gateway-lab get gateway gateway
-NAME      CLASS    ADDRESS        PROGRAMMED   AGE
-gateway   cilium   10.96.150.20   True         5m
+$ kubectl get gatewayclass
+NAME     CONTROLLER                     ACCEPTED   AGE
+cilium   io.cilium/gateway-controller   True       101s
 
-$ kubectl -n gateway-lab describe gateway gateway
-Name:         gateway
-Namespace:    gateway-lab
-Labels:       app.kubernetes.io/part-of=gateway-api-lab
-Annotations:  <none>
-API Version:  gateway.networking.k8s.io/v1
-Kind:         Gateway
-Metadata:
-  Name:        gateway
-  Namespace:   gateway-lab
-Spec:
-  Gateway Class Name:  cilium
-  Listeners:
-    Allowed Routes:
-      Namespaces:
-        From:  Same
-    Hostname:  *.lab.local
-    Name:      http
-    Port:      80
-    Protocol:  HTTP
-    Allowed Routes:
-      Namespaces:
-        From:  Same
-    Hostname:  *.lab.local
-    Name:      https
-    Port:      443
-    Protocol:  HTTPS
-    Tls:
-      Certificate Refs:
-        Kind:  Secret
-        Name:  gateway-tls
-      Mode:    Terminate
-Status:
-  Addresses:
-    Type:   IPAddress
-    Value:  10.96.150.20
-  Conditions:
-    Last Transition Time:  2026-10-18T19:15:00Z
-    Message:               Gateway successfully scheduled and programmed by Cilium
-    Observed Generation:   1
-    Reason:                Programmed
-    Status:                True
-    Type:                  Programmed
-    Last Transition Time:  2026-10-18T19:15:00Z
-    Message:               GatewayClass cilium accepted this Gateway
-    Observed Generation:   1
-    Reason:                Accepted
-    Status:                True
-    Type:                  Accepted
+$ kubectl get ciliumloadbalancerippool,ciliuml2announcementpolicy
+NAME                                             DISABLED   CONFLICTING   IPS AVAILABLE   AGE
+ciliumloadbalancerippool.cilium.io/gateway-lab   false      False         20              65s
+
+NAME                                               AGE
+ciliuml2announcementpolicy.cilium.io/gateway-lab   65s
+
+$ kubectl -n gateway-lab get gateway,svc,httproute
+NAME                                        CLASS    ADDRESS          PROGRAMMED   AGE
+gateway.gateway.networking.k8s.io/gateway   cilium   192.168.39.200   True         65s
+
+NAME                             TYPE           CLUSTER-IP       EXTERNAL-IP      PORT(S)                      AGE
+service/cilium-gateway-gateway   LoadBalancer   10.103.166.116   192.168.39.200   80:31007/TCP,443:31666/TCP   65s
+service/httpbin-v1               ClusterIP      10.109.203.116   <none>           8080/TCP                     65s
+service/httpbin-v2               ClusterIP      10.110.179.149   <none>           8080/TCP                     65s
+
+NAME                                                        HOSTNAMES                                AGE
+httproute.gateway.networking.k8s.io/e01-enrutamiento        ["enrutamiento.lab.local"]               65s
+httproute.gateway.networking.k8s.io/e02-match-header        ["match.lab.local"]                      65s
+httproute.gateway.networking.k8s.io/e03-pesos               ["pesos.lab.local"]                      65s
+httproute.gateway.networking.k8s.io/e04-modificar-headers   ["headers.lab.local"]                    65s
+httproute.gateway.networking.k8s.io/e05-rewrite             ["rewrite.lab.local"]                    65s
+httproute.gateway.networking.k8s.io/e06-redirect            ["redirect.lab.local"]                   65s
+httproute.gateway.networking.k8s.io/e07-tls                 ["tls.lab.local","redirect.lab.local"]   65s
+
+$ kubectl -n gateway-lab get gateway gateway -o jsonpath=... (condiciones)
+Accepted=True (Accepted)
+Programmed=True (Programmed)
+listener http: attachedRoutes=6 ResolvedRefs=True Accepted=True Programmed=True 
+listener https: attachedRoutes=1 ResolvedRefs=True Accepted=True Programmed=True 

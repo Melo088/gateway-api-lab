@@ -8,31 +8,31 @@ Esta guía documenta los problemas, advertencias y comportamientos anómalos enc
 
 | # | Síntoma / Error | Causa Raíz | Nivel de Severidad | Solución Rápida |
 |---|---|---|---|---|
-| **1** | Gateway en `PROGRAMMED: False` y Service en `<pending>` | Minikube no asigna IP externa a Services `LoadBalancer` sin túnel activo | Alta | Iniciar `minikube tunnel` o usar `port-forward` |
+| **1** | Service `cilium-gateway-gateway` en `<pending>` | Minikube no asigna IP externa a Services `LoadBalancer` | Alta | Aplicar el pool de LB IPAM (`instalacion/lb-ipam.yaml`) |
 | **2** | Error `no matches for kind "Gateway"` al aplicar kustomize | Los CRDs oficiales de Gateway API no fueron instalados | Crítica | Aplicar `standard-install.yaml` v1.6.2 |
 | **3** | Handshake TLS falla en E07 (`curl: (35) error...`) | Secret `gateway-tls` ausente en el namespace `gateway-lab` | Alta | Ejecutar `scripts/crear-certificado.sh` |
-| **4** | Cilium Agent en `CrashLoopBackOff` o `Error` | Conflicto con `kube-proxy` existente o cgroups v2 no montados | Crítica | Iniciar Minikube con `--network-plugin=cni` |
+| **4** | Cilium Agent en `CrashLoopBackOff` o `Error` | Conflicto con `kube-proxy` existente o cgroups v2 no montados | Crítica | Iniciar Minikube con `--network-plugin=cni --cni=false` y sin `kube-proxy` |
 | **5** | E05 (Rewrite) devuelve `404 Not Found` | Reemplazo de prefijo desalineado con las rutas de `httpbin` | Media | Verificar `ReplacePrefixMatch: /` en `e05-rewrite.yaml` |
-| **6** | `Error: namespaces "cilium-secrets" not found` al instalar | Directiva `secretsNamespace.create: false` en `values.yaml` sin namespace existente | Alta | Omitir `secretsNamespace` o poner `create: true` |
+| **6** | `Error: namespaces "cilium-secrets" not found` al instalar | Directiva `secretsNamespace.create: false` en `cilium.yaml` sin namespace existente | Alta | Omitir `secretsNamespace` o poner `create: true` |
 | **7** | `release name check failed: cannot reuse a name that is still in use` | Intento previo de instalación falló a medio camino dejando release rota | Media | Ejecutar `cilium uninstall` antes de reinstalar |
-| **8** | `cilium-operator` en CrashLoopBackOff: `no matches for kind "TLSRoute" in version "v1alpha2"` | Gateway API v1.6.2 deshabilita `v1alpha2` (`served: false`), requerido por Cilium 1.16 | Crítica | Parchar el CRD `tlsroutes` para habilitar `served: true` en `v1alpha2` |
+| **8** | `cilium-operator` en CrashLoopBackOff: `no matches for kind "TLSRoute" in version "v1alpha2"` | Gateway API v1.6.2 deshabilita `v1alpha2` (`served: false`), requerido por Cilium 1.16 | Crítica | Usar Cilium 1.20.3, compilado contra Gateway API v1.6 |
 | **9** | `CiliumNetworkPolicy` no bloquea o pods no reciben CNI | Los pods de `httpbin` se levantaron antes de que Cilium estuviese listo | Media | Ejecutar `rollout restart` sobre los Deployments |
 | **10**| Extensión L7 bloquea al Gateway (`status=000` o timeout) | La política L7 usa `fromEndpoints` y desconoce la identidad `reserved:ingress` | Alta | Usar `fromEntities: [ingress, cluster, host]` |
+| **11**| Gateway `Programmed` con IP, pero todas las peticiones expiran | Driver `docker` de minikube: el tráfico marcado por `TPROXY` no llega al socket de Envoy | Crítica | Usar `minikube start --driver=kvm2` |
+| **12**| Pods de Cilium en `ImagePullBackOff` en la VM kvm2 | La VM no tiene salida a internet (NAT de libvirt) | Alta | Corregir la red de libvirt o cargar imágenes con `minikube image load` |
 
 ---
 
 ## Diagnóstico Detallado y Solución
 
 ### Incidencia 1: El Gateway no obtiene dirección IP externa (`<pending>`)
-* **Síntoma**: Al ejecutar `kubectl -n gateway-lab get gateway gateway`, la columna `PROGRAMMED` muestra `False` y la columna `ADDRESSES` está vacía.
-* **Causa Raíz**: En Minikube con driver Docker, Kubernetes no cuenta con un proveedor de nube que asigne IP pública automáticamente.
-* **Solución**:
-  1. En una terminal separada, se debe ejecutar `minikube tunnel`.
-  2. Alternativa con port-forward:
-     ```bash
-     kubectl -n gateway-lab port-forward svc/cilium-gateway-gateway 8080:80 8443:443 &
-     GATEWAY_ADDRESS=127.0.0.1 HTTP_PORT=8080 HTTPS_PORT=8443 scripts/verificar.sh
-     ```
+* **Síntoma**: `kubectl -n gateway-lab get svc cilium-gateway-gateway` muestra `EXTERNAL-IP <pending>` y el Gateway no tiene dirección en `status.addresses`.
+* **Causa Raíz**: Minikube no cuenta con un proveedor de nube que asigne IPs a los Services `LoadBalancer`.
+* **Solución**: usar LB IPAM de Cilium. `cilium.yaml` activa `l2announcements` y `externalIPs`, y `lb-ipam.yaml` define el rango (de la subred de `minikube ip`) y la política de anuncio ARP:
+  ```bash
+  kubectl apply -f cilium/instalacion/lb-ipam.yaml
+  kubectl -n gateway-lab get svc cilium-gateway-gateway   # EXTERNAL-IP 192.168.39.200
+  ```
 
 ---
 
@@ -70,14 +70,14 @@ Esta guía documenta los problemas, advertencias y comportamientos anómalos enc
 
 ### Incidencia 6: Error `namespaces "cilium-secrets" not found` durante la instalación
 * **Síntoma**:
-  Al ejecutar `cilium install -f values.yaml`, el instalador falla con:
+  Al ejecutar `cilium install -f cilium.yaml`, el instalador falla con:
   ```text
   Error: Unable to install Cilium: namespaces "cilium-secrets" not found
   ```
 * **Causa Raíz**:
-  En `cilium/instalacion/values.yaml` se configuró `gatewayAPI.secretsNamespace.create: false`. Cilium asume que si la creación está deshabilitada, el administrador ya creó manualmente el namespace `cilium-secrets`. Al no encontrarlo, aborta la instalación.
+  En `cilium/instalacion/cilium.yaml` se configuró `gatewayAPI.secretsNamespace.create: false`. Cilium asume que si la creación está deshabilitada, el administrador ya creó manualmente el namespace `cilium-secrets`. Al no encontrarlo, aborta la instalación.
 * **Solución**:
-  Eliminar la sección `secretsNamespace` de `values.yaml` o definir `create: true`. De este modo Cilium utiliza el namespace local donde reside el Gateway (`gateway-lab`) sin requerir namespaces auxiliares.
+  Eliminar la sección `secretsNamespace` de `cilium.yaml` o definir `create: true`. De este modo Cilium utiliza el namespace local donde reside el Gateway (`gateway-lab`) sin requerir namespaces auxiliares.
 
 ---
 
@@ -93,7 +93,7 @@ Esta guía documenta los problemas, advertencias y comportamientos anómalos enc
   Ejecutar una desinstalación limpia antes de reintentar:
   ```bash
   cilium uninstall
-  cilium install --version 1.16.2 -f cilium/instalacion/values.yaml --wait
+  cilium install --version 1.20.3 -f cilium/instalacion/cilium.yaml --wait
   ```
   *(El script `instalar-cilium.sh` ha sido actualizado para realizar esta limpieza automáticamente si detecta fallos previos).*
 
@@ -106,13 +106,13 @@ Esta guía documenta los problemas, advertencias y comportamientos anómalos enc
   level=fatal msg="failed to start: failed to create gateway controller: failed to setup reconciler: no matches for kind \"TLSRoute\" in version \"gateway.networking.k8s.io/v1alpha2\"" subsys=cilium-operator-generic
   ```
 * **Causa Raíz**:
-  Cilium v1.16.2 fue compilado para reconciliar `TLSRoute` bajo la versión de API `v1alpha2`. Sin embargo, en **Gateway API v1.6.2 (Standard)**, `TLSRoute` fue promovido a `v1`, y la versión antigua `v1alpha2` se incluye en el CRD pero con la bandera `served: false`. Al intentar consultar ese endpoint, el API Server rechaza la conexión y el operador colapsa.
+  Cilium v1.16.2 está compilado contra Gateway API v1.1 y reconcilia `TLSRoute` en `v1alpha2`. En **Gateway API v1.6.2 (Standard)**, `TLSRoute` es `v1` y `v1alpha2` queda con `served: false`, así que el operador no encuentra el recurso y termina.
 * **Solución**:
-  Habilitar el servicio de `v1alpha2` en el CRD de `TLSRoute` mediante un parche JSON:
+  Usar una versión de Cilium compilada contra Gateway API v1.6: **Cilium 1.20.3** (`sigs.k8s.io/gateway-api v1.6.3` en su `go.mod`).
   ```bash
-  kubectl patch crd tlsroutes.gateway.networking.k8s.io --type=json -p '[{"op": "replace", "path": "/spec/versions/1/served", "value": true}]'
-  kubectl -n kube-system rollout restart deployment cilium-operator
+  cilium install --version 1.20.3 -f cilium/instalacion/cilium.yaml --wait
   ```
+  No se parchea el CRD `tlsroutes`: es compartido por todas las implementaciones del laboratorio y reactivar `v1alpha2` altera la API del clúster para los demás controladores.
 
 ---
 
@@ -150,6 +150,37 @@ Esta guía documenta los problemas, advertencias y comportamientos anómalos enc
             http:
               - method: GET
                 path: "/get"
+  ```
+
+---
+
+### Incidencia 11: Gateway programado pero sin respuesta con el driver `docker`
+* **Síntoma**: el Gateway queda `Programmed=True` con IP de LB IPAM y el ARP resuelve, pero `curl` expira (`000`) contra la IP, el NodePort e incluso desde dentro del nodo.
+* **Diagnóstico**:
+  ```bash
+  kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg envoy admin metrics | grep listener_downstream_cx_total
+  minikube ssh -- 'sudo iptables-save -c -t mangle | grep TPROXY'
+  ```
+  La regla `TPROXY` acumula paquetes pero el listener de Envoy registra 0 conexiones. Con `bpf.tproxy=true` las conexiones llegan a Envoy, pero las de Envoy hacia los pods expiran (`upstream_cx_connect_timeout`).
+* **Causa Raíz**: en el nodo de minikube con driver `docker` (kernel del host Fedora 7.1, `iptables-nft`), el tráfico redirigido por TPROXY no se entrega al socket transparente de Envoy. Se probaron sin éxito `bpf.tproxy`, `bpf.hostLegacyRouting`, `bpf.masquerade=false` y Envoy embebido.
+* **Solución**: usar una VM con kernel propio:
+  ```bash
+  minikube start --driver=kvm2 --cpus=2 --memory=4096 --network-plugin=cni --cni=false --extra-config=kubeadm.skip-phases=addon/kube-proxy
+  ```
+  Con kvm2 (kernel 6.6.95) la configuración por defecto funciona: 7/7 escenarios.
+
+---
+
+### Incidencia 12: Imágenes de Cilium sin descargar en la VM kvm2
+* **Síntoma**: `cilium`, `cilium-operator` y `cilium-envoy` en `ImagePullBackOff`; desde la VM, `ping 1.1.1.1` no responde.
+* **Causa Raíz**: el NAT de la red `default` de libvirt no reenvía tráfico (reglas del firewall del host).
+* **Solución**: corregir la red de libvirt, o descargar las imágenes en el host y cargarlas en la VM. Como `docker load` no conserva los digests, se instala con `image.useDigest: false`, `operator.image.useDigest: false` y `envoy.image.useDigest: false`:
+  ```bash
+  for i in quay.io/cilium/cilium:v1.20.3 quay.io/cilium/operator-generic:v1.20.3 \
+           quay.io/cilium/cilium-envoy:v1.38.6-1791537840-00e749f11f69334c625e53fc1ce2fc6c7f34a51f \
+           mccutchen/go-httpbin:2.25.0; do
+    docker pull "$i" && minikube image load "$i"
+  done
   ```
 
 ---

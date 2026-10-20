@@ -13,7 +13,7 @@ Se presentan dos modalidades:
 | Herramienta | Versión mínima | Verificación |
 |---|---|---|
 | Linux Kernel | >= 5.4 (óptimo con soporte eBPF) | `uname -r` |
-| `minikube` | v1.38.0+ | `minikube version` |
+| `minikube` | v1.38.0+ con driver `kvm2` (libvirt) | `minikube version`, `virsh version` |
 | `kubectl` | v1.31.0+ | `kubectl version --client` |
 | `curl`, `tar`, `openssl` | Estándar en Linux | `curl --version`, `openssl version` |
 
@@ -24,17 +24,15 @@ Se presentan dos modalidades:
 Si deseas levantar todo el entorno de punta a punta de forma desatendida:
 
 ### Paso 1: Iniciar el Clúster de Minikube
-Debido a que Cilium actuará como CNI y reemplazará a `kube-proxy`, iniciamos Minikube delegando el CNI:
+Cilium actuará como CNI y reemplazará a `kube-proxy`, así que el clúster arranca sin ninguno de los dos:
 ```bash
-minikube start --network-plugin=cni --memory=4096 --cpus=2
+minikube start --driver=kvm2 --cpus=2 --memory=4096 \
+  --network-plugin=cni --cni=false \
+  --extra-config=kubeadm.skip-phases=addon/kube-proxy
 ```
+Se usa el driver `kvm2` (VM con kernel propio): con el driver `docker` el tráfico hacia Envoy no llega a su socket (ver `cilium/README.md`, sección 9).
 
-### Paso 2: Iniciar el Túnel de Red (en otra terminal)
-Minikube no asigna direcciones IP externas a los Services de tipo `LoadBalancer` sin un túnel activo:
-```bash
-minikube tunnel
-```
-*(Dejar esta terminal abierta durante toda la sesión del laboratorio).*
+No hace falta `minikube tunnel`: LB IPAM de Cilium asigna la IP del Gateway ([`lb-ipam.yaml`](lb-ipam.yaml)).
 
 ### Paso 3: Ejecutar el Script Maestro
 En la terminal principal, dentro de la raíz del repositorio:
@@ -45,7 +43,7 @@ cilium/instalacion/desplegar-todo.sh
 El script ejecutará automáticamente las 6 fases:
 1. Verificación de conectividad al clúster.
 2. Instalación de los CRDs oficiales de Gateway API v1.6.2 (Standard).
-3. Descarga de `cilium-cli` e instalación de Cilium con eBPF y Gateway API.
+3. Descarga de `cilium-cli` v0.20.1, instalación de Cilium 1.20.3 con Gateway API y aplicación del pool de LB IPAM.
 4. Generación del certificado autofirmado TLS (`*.lab.local`) y creación del Secret `gateway-tls`.
 5. Despliegue del overlay `cilium/manifests` (Backends httpbin + Gateway + HTTPRoutes E01-E07).
 6. Ejecución de la suite de pruebas `scripts/verificar.sh` y verificación de la extensión L7.
@@ -58,14 +56,11 @@ Si prefieres ejecutar y comprender cada comando de manera individual:
 
 ### Paso 1: Iniciar Minikube
 ```bash
-minikube start --network-plugin=cni --memory=4096 --cpus=2
+minikube start --driver=kvm2 --cpus=2 --memory=4096 \
+  --network-plugin=cni --cni=false \
+  --extra-config=kubeadm.skip-phases=addon/kube-proxy
 ```
-* **Explicación**: El parámetro `--network-plugin=cni` instruye a Kubernetes para que no inicialice un CNI básico por defecto, dejando la red lista para ser configurada por Cilium vía eBPF.
-
-En otra terminal:
-```bash
-minikube tunnel
-```
+* **Explicación**: `--network-plugin=cni --cni=false` deja el clúster sin CNI (el nodo queda `NotReady` hasta instalar Cilium) y `skip-phases=addon/kube-proxy` evita instalar `kube-proxy`, cuya función asume Cilium con eBPF.
 
 ---
 
@@ -78,14 +73,14 @@ kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-a
 ```bash
 kubectl get crd | grep gateway.networking.k8s.io
 ```
-Deberás ver listados: `gatewayclasses`, `gateways`, `httproutes`, `grpcroutes`, `referencegrants`, entre otros.
+Deberás ver listados: `gatewayclasses`, `gateways`, `httproutes`, `grpcroutes`, `referencegrants`, `tlsroutes`, `listenersets`, entre otros. Deben instalarse **antes** que Cilium.
 
 ---
 
 ### Paso 3: Descargar el CLI Oficial de Cilium (Sin Helm)
 Descargamos el binario precompilado de `cilium-cli` que contiene internamente el motor de instalación:
 ```bash
-CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+CILIUM_CLI_VERSION=v0.20.1
 CLI_ARCH=amd64
 if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
 
@@ -99,25 +94,17 @@ cilium version --client
 ---
 
 ### Paso 4: Instalar Cilium en el Clúster
-Instalamos Cilium en el namespace `kube-system` con soporte para Gateway API y eBPF habilitados:
+Instalamos Cilium en el namespace `kube-system` con la configuración de [`cilium.yaml`](cilium.yaml):
 ```bash
-cilium install \
-  --version 1.16.2 \
-  -f cilium/instalacion/values.yaml \
-  --wait
-```
-*O equivalentemente usando banderas directas:*
-```bash
-cilium install \
-  --version 1.16.2 \
-  --set kubeProxyReplacement=true \
-  --set gatewayAPI.enabled=true \
-  --wait
+cilium install --version 1.20.3 -f cilium/instalacion/cilium.yaml --wait
+kubectl apply -f cilium/instalacion/lb-ipam.yaml
 ```
 
 * **Explicación de parámetros clave**:
-  * `kubeProxyReplacement=true`: Reemplaza la tabla de iptables y `kube-proxy` por mapas eBPF de alto rendimiento en el kernel.
-  * `gatewayAPI.enabled=true`: Activa el controlador interno de Gateway API dentro de Cilium Operator y configura los listeners de Envoy embebidos.
+  * `kubeProxyReplacement: true`: Cilium balancea los Services con mapas eBPF en lugar de `kube-proxy`.
+  * `k8sServiceHost: auto`: sin `kube-proxy`, Cilium lee la dirección del API Server del ConfigMap `cluster-info`.
+  * `gatewayAPI.enabled: true`: activa el controlador de Gateway API en `cilium-operator` y la `GatewayClass` `cilium`.
+  * `l2announcements` y `externalIPs`: junto con `lb-ipam.yaml`, dan al Service del Gateway una IP de la subred de minikube anunciada por ARP.
 * **Verificación de estado**:
 ```bash
 cilium status --wait
@@ -159,11 +146,7 @@ Ejecutamos el script de pruebas automatizado:
 ```bash
 scripts/verificar.sh
 ```
-*Si estás usando port-forward manual:*
-```bash
-kubectl -n gateway-lab port-forward svc/cilium-gateway-gateway 8080:80 8443:443 &
-GATEWAY_ADDRESS=127.0.0.1 HTTP_PORT=8080 HTTPS_PORT=8443 scripts/verificar.sh
-```
+El script toma la dirección de `status.addresses` del Gateway (`192.168.39.200` con el pool de `lb-ipam.yaml`).
 
 ---
 
@@ -178,34 +161,35 @@ cilium/manifests/extensiones/verificar.sh
 ## 4. Desglose Línea por Línea de `instalar-cilium.sh`
 
 ```bash
-1: #!/usr/bin/env bash
-2: set -euo pipefail
+#!/usr/bin/env bash
+set -euo pipefail
 ```
 * `set -e`: Detiene la ejecución inmediatamente si algún comando falla.
 * `set -u`: Trata el uso de variables no declaradas como un error.
 * `set -o pipefail`: Propaga el código de salida de un error a través de pipelines.
 
 ```bash
-4: CILIUM_VERSION="${CILIUM_VERSION:-1.16.2}"
-5: VALUES_FILE="$(dirname "$0")/values.yaml"
+CILIUM_VERSION="${CILIUM_VERSION:-1.20.3}"
+CILIUM_CLI_VERSION="${CILIUM_CLI_VERSION:-v0.20.1}"
+VALUES_FILE="$(dirname "$0")/cilium.yaml"
+LB_IPAM_FILE="$(dirname "$0")/lb-ipam.yaml"
 ```
-* Define la versión fijada de Cilium para garantizar reproducibilidad.
-* Resuelve la ruta relativa hacia `values.yaml`.
+* Fija las versiones de Cilium y de su CLI para garantizar reproducibilidad.
+* Resuelve las rutas hacia `cilium.yaml` y `lb-ipam.yaml`.
 
 ```bash
-11: if ! command -v cilium >/dev/null 2>&1; then
+if ! command -v cilium >/dev/null 2>&1; then
 ```
 * Comprueba si el binario `cilium` ya está instalado en el sistema para evitar descargas innecesarias.
 
 ```bash
-13:   CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-14:   CLI_ARCH="amd64"
-15:   if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH="arm64"; fi
+  CLI_ARCH="amd64"
+  if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH="arm64"; fi
 ```
-* Consulta la última versión estable del CLI y detecta dinámicamente la arquitectura de la CPU (`x86_64` o `ARM64`).
+* Detecta la arquitectura de la CPU (`x86_64` o `ARM64`) para descargar el CLI fijado en `CILIUM_CLI_VERSION`.
 
 ```bash
-47: cilium install --version "${CILIUM_VERSION}" -f "$VALUES_FILE" --wait
+cilium install --version "${CILIUM_VERSION}" -f "$VALUES_FILE" --wait
 ```
 * Invoca el motor de instalación interno de Cilium CLI inyectando los valores declarativos.
 * La bandera `--wait` bloquea hasta que los pods del CNI y el operador estén completamente listos y operando.
@@ -219,9 +203,10 @@ Para desmantelar todo el laboratorio y dejar el clúster limpio:
 # 1. Eliminar manifiestos del laboratorio y secretos
 kubectl delete -k cilium/manifests
 
-# 2. Desinstalar Cilium del clúster
+# 2. Pool de LB IPAM y Cilium
+kubectl delete -f cilium/instalacion/lb-ipam.yaml
 cilium uninstall
 
-# 3. Detener Minikube
-minikube stop
+# 3. Clúster
+minikube delete
 ```

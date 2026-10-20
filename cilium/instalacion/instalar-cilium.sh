@@ -7,8 +7,10 @@
 # ==============================================================================
 set -euo pipefail
 
-CILIUM_VERSION="${CILIUM_VERSION:-1.16.2}"
-VALUES_FILE="$(dirname "$0")/values.yaml"
+CILIUM_VERSION="${CILIUM_VERSION:-1.20.3}"
+CILIUM_CLI_VERSION="${CILIUM_CLI_VERSION:-v0.20.1}"
+VALUES_FILE="$(dirname "$0")/cilium.yaml"
+LB_IPAM_FILE="$(dirname "$0")/lb-ipam.yaml"
 
 echo "============================================================"
 echo " 1. Verificando o Instalando Cilium CLI en el sistema"
@@ -16,7 +18,6 @@ echo "============================================================"
 
 if ! command -v cilium >/dev/null 2>&1; then
   echo "Cilium CLI no detectado en PATH. Descargando versión estable oficial..."
-  CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
   CLI_ARCH="amd64"
   if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH="arm64"; fi
 
@@ -42,26 +43,20 @@ echo " 2. Verificando conexión al clúster Kubernetes"
 echo "============================================================"
 if ! kubectl cluster-info >/dev/null 2>&1; then
   echo "ERROR: No hay conexión con el clúster Kubernetes." >&2
-  echo "Por favor inicia tu clúster (ej. minikube start --network-plugin=cni) antes de continuar." >&2
+  echo "Inicia el clúster sin CNI ni kube-proxy (ver cilium/README.md, sección 4) antes de continuar." >&2
   exit 1
 fi
 echo "Conexión a Kubernetes confirmada."
 
 echo
 echo "============================================================"
-echo " 3. Asegurando CRDs de Gateway API y compatibilidad v1alpha2"
+echo " 3. Asegurando CRDs de Gateway API v1.6.2"
 echo "============================================================"
+# Deben existir antes de instalar Cilium: el operador solo registra la
+# GatewayClass cilium si encuentra los CRDs al arrancar.
 if ! kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then
   echo "Instalando CRDs oficiales de Gateway API v1.6.2 (Standard)..."
   kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
-fi
-
-# Cilium 1.16 reconcilia TLSRoute requiriendo el endpoint v1alpha2.
-# En Gateway API v1.6+, v1alpha2 viene desactivado por defecto (served=false).
-# Lo activamos para que el reconciliador de cilium-operator inicie limpiamente:
-if kubectl get crd tlsroutes.gateway.networking.k8s.io >/dev/null 2>&1; then
-  echo "Habilitando compatibilidad con TLSRoute v1alpha2 para el operador de Cilium..."
-  kubectl patch crd tlsroutes.gateway.networking.k8s.io --type=json -p '[{"op": "replace", "path": "/spec/versions/1/served", "value": true}]' 2>/dev/null || true
 fi
 
 echo
@@ -75,20 +70,11 @@ if cilium status 2>&1 | grep -qi "error"; then
   cilium uninstall >/dev/null 2>&1 || true
 fi
 
-if [ -f "$VALUES_FILE" ]; then
-  echo "Aplicando configuración declarativa desde: ${VALUES_FILE}"
-  cilium install \
-    --version "${CILIUM_VERSION}" \
-    -f "$VALUES_FILE" \
-    --wait
-else
-  echo "Aplicando configuración por flags directas de CLI..."
-  cilium install \
-    --version "${CILIUM_VERSION}" \
-    --set kubeProxyReplacement=true \
-    --set gatewayAPI.enabled=true \
-    --wait
-fi
+echo "Aplicando configuración declarativa desde: ${VALUES_FILE}"
+cilium install \
+  --version "${CILIUM_VERSION}" \
+  -f "$VALUES_FILE" \
+  --wait
 
 echo
 echo "============================================================"
@@ -101,6 +87,12 @@ echo "============================================================"
 echo " 6. Verificando GatewayClass cilium"
 echo "============================================================"
 kubectl get gatewayclass cilium -o wide || true
+
+echo
+echo "============================================================"
+echo " 7. Pool de IPs para Services LoadBalancer (LB IPAM + L2)"
+echo "============================================================"
+kubectl apply -f "$LB_IPAM_FILE"
 
 # Si ya existían pods en gateway-lab antes de instalar Cilium, los reiniciamos
 # para que obtengan conectividad administrada por el CNI:
